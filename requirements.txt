@@ -1,2 +1,3 @@
 Flask>=3.0,<4
 pydot>=3,<5
+gunicorn>=20,<21
