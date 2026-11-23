@@ -8,12 +8,21 @@ const resultBox = document.querySelector("#result");
 const errorBox = document.querySelector("#error");
 const details = document.querySelector("#details");
 const formulaInput = document.querySelector("#formula");
-const specificationInput = document.querySelector("#specification");
+const specificationEditor = CodeMirror.fromTextArea(document.querySelector("#specification"), {
+  mode: "stv",
+  lineNumbers: true,
+  lineWrapping: false,
+  maxHighlightLength: 2 * 1024 * 1024,
+  inputStyle: "textarea"
+});
+specificationEditor.getInputField().setAttribute("aria-label", "Model specification");
+specificationEditor.getInputField().setAttribute("aria-describedby", "editor-help");
 const editorDialog = document.querySelector("#editor-dialog");
 const openEditorButton = document.querySelector("#open-editor");
 const modelSource = document.querySelector("#model-source");
 const MAX_SPECIFICATION_SIZE = 2 * 1024 * 1024;
 let sourceName = "";
+let loadingSpecification = false;
 let graphs = [];
 let generated = false;
 let cy = null;
@@ -26,9 +35,9 @@ function showError(message) {
 function setBusy(busy) {
   fileInput.disabled = busy;
   openEditorButton.disabled = busy;
-  specificationInput.disabled = busy;
+  specificationEditor.setOption("readOnly", busy);
   formulaInput.disabled = busy || !generated;
-  generateButton.disabled = busy || !specificationInput.value.trim();
+  generateButton.disabled = busy || !specificationEditor.getValue().trim();
   verifyButton.disabled = busy || !generated || !formulaInput.value.trim();
   select.disabled = busy || !graphs.length;
   layoutButton.disabled = busy || !cy;
@@ -124,9 +133,10 @@ async function displayGraph(animate = false) {
 }
 
 async function submit(action) {
-  if (!specificationInput.value.trim()) return;
+  const text = specificationEditor.getValue();
+  if (!text.trim()) return;
   showError("");
-  const specification = new Blob([specificationInput.value], { type: "text/plain;charset=utf-8" });
+  const specification = new Blob([text], { type: "text/plain;charset=utf-8" });
   if (specification.size > MAX_SPECIFICATION_SIZE) {
     showError("The specification must be no larger than 2 MB.");
     return;
@@ -166,7 +176,13 @@ fileInput.addEventListener("change", async () => {
   try {
     if (file.size > MAX_SPECIFICATION_SIZE) throw new Error("The specification file must be no larger than 2 MB.");
     const text = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
-    specificationInput.value = text;
+    loadingSpecification = true;
+    try {
+      specificationEditor.setValue(text);
+      specificationEditor.clearHistory();
+    } finally {
+      loadingSpecification = false;
+    }
     sourceName = file.name;
     document.querySelector("#file-label").textContent = file.name;
     modelSource.textContent = `Loaded from ${file.name}. The original file will not be changed.`;
@@ -180,11 +196,13 @@ fileInput.addEventListener("change", async () => {
 });
 openEditorButton.addEventListener("click", () => {
   editorDialog.showModal();
-  specificationInput.focus();
+  specificationEditor.refresh();
+  specificationEditor.focus();
 });
 document.querySelector("#close-editor").addEventListener("click", () => editorDialog.close());
 document.querySelector("#done-editing").addEventListener("click", () => editorDialog.close());
-specificationInput.addEventListener("input", () => {
+specificationEditor.on("change", () => {
+  if (loadingSpecification) return;
   if (generated || graphs.length) reset();
   else {
     showError("");

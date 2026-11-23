@@ -30,10 +30,23 @@ function createApp() {
     destroy() {},
     layout(options) { return { run() { options.stop(); } }; },
   };
+  const editor = {
+    value: "",
+    getInputField() { return { setAttribute() {} }; },
+    getValue() { return this.value; },
+    setValue(value) { this.value = value; this.change(); },
+    clearHistory() {},
+    setOption() {},
+    refresh() {},
+    focus() {},
+    on(_event, handler) { this.change = handler; },
+    type(value) { this.value = value; this.change(); },
+  };
   const context = {
     document: { querySelector: element },
     Option: function (text, value) { this.text = text; this.value = value; },
     Blob, FormData, TextDecoder, TypeError,
+    CodeMirror: { fromTextArea() { return editor; } },
     cytoscape() { return graph; },
     async fetch(_url, options) {
       requests.push({
@@ -53,7 +66,7 @@ function createApp() {
     },
   };
   vm.runInNewContext(source, context);
-  return { element, requests };
+  return { element, requests, editor };
 }
 
 test("loaded file edits are used for generation and verification", async () => {
@@ -66,17 +79,15 @@ test("loaded file edits are used for generation and verification", async () => {
     async arrayBuffer() { return bytes; },
   }];
   await app.element("#model-file").emit("change");
-  assert.equal(app.element("#specification").value.replace(/\r\n/g, "\n"), original.replace(/\r\n/g, "\n"));
-  const edited = app.element("#specification").value + "\n";
-  app.element("#specification").value = edited;
-  await app.element("#specification").emit("input");
+  assert.equal(app.editor.getValue().replace(/\r\n/g, "\n"), original.replace(/\r\n/g, "\n"));
+  const edited = app.editor.getValue() + "\n";
+  app.editor.type(edited);
   await app.element("#generate").emit("click");
   await app.element("#verify").emit("click");
   assert.deepEqual(app.requests.map(request => request.specification), [edited, edited]);
   assert.equal(app.requests[1].formula, "<<A>><>(x == 1)");
   assert.equal(fs.readFileSync(samplePath, "utf8"), original);
-  app.element("#specification").value += "\n";
-  await app.element("#specification").emit("input");
+  app.editor.type(app.editor.getValue() + "\n");
   assert.equal(app.element("#verify").disabled, true);
   assert.equal(app.element("#graph-select").disabled, true);
   assert.equal(app.element("#result").hidden, true);
@@ -86,30 +97,26 @@ test("pasted specifications work without a file and reject oversized input", asy
   const app = createApp();
   await app.element("#open-editor").emit("click");
   assert.equal(app.element("#editor-dialog").open, true);
-  app.element("#specification").value = "Agent A:\ninit q0";
-  await app.element("#specification").emit("input");
+  app.editor.type("Agent A:\ninit q0");
   await app.element("#done-editing").emit("click");
   await app.element("#generate").emit("click");
   assert.equal(app.requests[0].specification, "Agent A:\ninit q0");
-  app.element("#specification").value = "é".repeat(1024 * 1024 + 1);
-  await app.element("#specification").emit("input");
+  app.editor.type("é".repeat(1024 * 1024 + 1));
   await app.element("#generate").emit("click");
   assert.equal(app.requests.length, 1);
   assert.match(app.element("#error").textContent, /no larger than 2 MB/);
-  app.element("#specification").value = "";
-  await app.element("#specification").emit("input");
+  app.editor.type("");
   assert.equal(app.element("#generate").disabled, true);
 });
 
 test("invalid UTF-8 input does not replace the current specification", async () => {
   const app = createApp();
-  app.element("#specification").value = "Existing text";
-  await app.element("#specification").emit("input");
+  app.editor.type("Existing text");
   app.element("#model-file").files = [{
     name: "invalid.txt", size: 1,
     async arrayBuffer() { return new Uint8Array([255]); },
   }];
   await app.element("#model-file").emit("change");
-  assert.equal(app.element("#specification").value, "Existing text");
+  assert.equal(app.editor.getValue(), "Existing text");
   assert.match(app.element("#error").textContent, /UTF-8/);
 });

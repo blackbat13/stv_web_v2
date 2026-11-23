@@ -30,6 +30,9 @@ The browser sends the current specification editor contents to the server for
 each action. Changes remain in the app and are never saved to the original file;
 they are lost on page reload. Editing the specification clears the previous
 models and verification result, so generate again before verifying.
+The editor highlights STV v2 scanner tokens, including section headers,
+keywords, comments, numbers, and operators. Highlighting is not syntax
+validation; STV reports errors when the model is generated or verified.
 Each run uses an isolated temporary directory which is deleted afterwards.
 Verification regenerates the models using the current specification and the
 formula in the formula editor, passed to STV as an override. Enter only the
@@ -45,5 +48,5 @@ untrusted users without appropriate isolation, resource limits and authenticatio
 
 ```sh
 python -m unittest discover -s tests
-node --test tests/editor.test.cjs
+node --test tests/editor.test.cjs tests/stv-mode.test.cjs
 ```

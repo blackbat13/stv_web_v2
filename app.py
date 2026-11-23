@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 import pydot
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, abort, jsonify, render_template, request, send_from_directory
 from werkzeug.exceptions import RequestEntityTooLarge
 
 
@@ -144,6 +144,13 @@ def index():
 @app.get("/assets/cytoscape.min.js")
 def cytoscape():
     return send_from_directory(ROOT / "node_modules" / "cytoscape" / "dist", "cytoscape.min.js")
+
+
+@app.get("/assets/codemirror/<filename>")
+def codemirror_asset(filename):
+    if filename not in {"codemirror.js", "codemirror.css"}:
+        abort(404)
+    return send_from_directory(ROOT / "node_modules" / "codemirror" / "lib", filename)
 
 
 @app.post("/api/models")

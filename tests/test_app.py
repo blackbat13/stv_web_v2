@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import CHECKER, MAX_FORMULA_SIZE, MAX_INPUT_SIZE, ModelError, app, extract_formula, run_checker
+from app import CHECKER, MAX_FORMULA_SIZE, MAX_INPUT_SIZE, ROOT, ModelError, app, extract_formula, run_checker
 
 
 SAMPLE = Path(__file__).resolve().parents[1] / "model_checkers" / "stv_v2" / "sample_input" / "Voters1Candidates2.txt"
@@ -32,6 +32,14 @@ class RequestTests(unittest.TestCase):
         self.assertIn(self.upload(b"x" * (MAX_INPUT_SIZE + 1)).status_code, (400, 413))
         for formula in ("", "  ", "x\0y", "x" * (MAX_FORMULA_SIZE + 1)):
             self.assertEqual(self.upload(b"model", "verify", formula).status_code, 400)
+
+    @unittest.skipUnless((ROOT / "node_modules" / "codemirror" / "lib" / "codemirror.js").is_file(), "Requires npm install")
+    def test_editor_assets(self):
+        for filename in ("codemirror.js", "codemirror.css"):
+            response = self.client.get(f"/assets/codemirror/{filename}")
+            self.assertEqual(response.status_code, 200)
+            response.close()
+        self.assertEqual(self.client.get("/assets/codemirror/other.js").status_code, 404)
 
     def test_extract_formula_before_or_after_agents(self):
         self.assertEqual(extract_formula("Agent A:\ninit q0\nFORMULA: <<A>><>\n(x == 1)\n"), "<<A>><>\n(x == 1)")
