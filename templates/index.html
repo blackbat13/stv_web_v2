@@ -60,7 +60,7 @@
             <p>Upload a specification and generate your models to explore the states and transitions.</p>
             <span class="empty-hint">UPLOAD A FILE TO GET STARTED <b>↗</b></span>
           </div>
-          <div id="loading" class="loading" hidden><div class="spinner"></div><strong>Working on your model</strong><span>Complex models may take a little longer.</span></div>
+          <div id="loading" class="loading" role="status" aria-live="polite" hidden><div class="spinner"></div><strong id="loading-title">Working on your model</strong><span>Complex models may take a little longer.</span></div>
           <div id="canvas-hint" class="canvas-hint" hidden>DRAG TO MOVE <span>·</span> SCROLL TO ZOOM <span>·</span> CLICK TO INSPECT</div>
         </div>
         <div class="graph-footer"><div class="legend"><span><i class="legend-line normal"></i> Transition</span><span><i class="legend-line shared"></i> Shared transition</span><span><i class="legend-line strategy"></i> Strategy</span></div><span class="footer-note">STATE SPACE EXPLORER</span></div>

@@ -47,24 +47,30 @@ function reset() {
   setBusy(false);
 }
 
-function runLayout() {
-  if (!cy) return;
-  cy.layout({
-    name: "cose",
-    animate: false,
-    randomize: true,
-    fit: true,
-    padding: 55,
-    nodeRepulsion: 4000,
-    idealEdgeLength: 80,
-    numIter: 1000
-  }).run();
+function runLayout(animate = false) {
+  if (!cy) return Promise.resolve();
+  return new Promise(resolve => {
+    cy.layout({
+      name: "cose",
+      animate,
+      randomize: true,
+      fit: true,
+      padding: 55,
+      nodeRepulsion: 4000,
+      idealEdgeLength: 80,
+      numIter: 1000,
+      stop: resolve
+    }).run();
+  });
 }
 
-function displayGraph() {
+async function displayGraph(animate = false) {
   const graph = graphs.find(item => item.id === select.value);
   if (!graph) return;
-  if (cy) cy.destroy();
+  if (cy) {
+    cy.destroy();
+    cy = null;
+  }
   const title = graph.kind === "global" ? "Global model" : `${graph.name} · Local model`;
   document.querySelector("#graph-title").textContent = title;
   document.querySelector("#graph-subtitle").textContent = graph.kind === "global" ? "The combined state space of the system." : `The state space of agent ${graph.name}.`;
@@ -106,8 +112,7 @@ function displayGraph() {
     const edge = event.target;
     details.textContent = `${edge.data("source")} → ${edge.data("target")}\n${edge.data("label") || "Unlabelled transition"}\n${edge.data("kind") === "strategy" ? "Strategy transition" : edge.data("kind") === "shared" ? "Shared transition" : "Transition"}`;
   });
-  runLayout();
-  setBusy(false);
+  await runLayout(animate);
 }
 
 async function submit(action) {
@@ -133,7 +138,7 @@ async function submit(action) {
       resultBox.className = `result ${data.result ? "success" : "negative"}`;
       resultBox.textContent = data.result ? "TRUE · Strategy found. Red transitions mark the strategy in the global model." : "FALSE · No strategy found for this formula.";
     }
-    displayGraph();
+    await displayGraph();
   } catch (error) {
     showError(error.message || "Could not reach the server.");
   } finally {
@@ -159,6 +164,19 @@ formulaInput.addEventListener("input", () => {
 });
 generateButton.addEventListener("click", () => submit("generate"));
 verifyButton.addEventListener("click", () => submit("verify"));
-select.addEventListener("change", displayGraph);
-layoutButton.addEventListener("click", runLayout);
+select.addEventListener("change", async () => {
+  showError("");
+  document.querySelector("#loading-title").textContent = "Loading model";
+  setBusy(true);
+  try {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await displayGraph(true);
+  } catch (error) {
+    showError(`Could not load model: ${error.message}`);
+  } finally {
+    document.querySelector("#loading-title").textContent = "Working on your model";
+    setBusy(false);
+  }
+});
+layoutButton.addEventListener("click", () => runLayout());
 fitButton.addEventListener("click", () => cy && cy.fit(undefined, 55));
