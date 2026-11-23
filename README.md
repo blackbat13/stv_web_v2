@@ -1,7 +1,8 @@
 # STV model workbench
 
 A Flask interface for generating and exploring global and agent-local models with
-STV v2. Upload a specification, generate the models, then view or edit the
+STV v2. Load a specification from a file or write or paste it in the
+specification editor, generate the models, then view or edit the
 formula before verifying it. The checker marks strategy transitions in red in the
 global model when verification succeeds; blue transitions are shared actions.
 Drag states, zoom, fit or rearrange the graph, and click an element for details.
@@ -25,13 +26,16 @@ Open the address printed by Flask. To use another STV v2 binary, set the
 `STV_CHECKER` environment variable to its absolute path before starting Flask.
 A sample specification is in `model_checkers/stv_v2/sample_input/`.
 
-The browser sends the selected file to the server for each action. Each run
-uses an isolated temporary directory which is deleted afterwards. Verification
-regenerates the models using the same file and the formula in the editor, passed
-to STV as an override. The uploaded specification is never modified. Enter only
-the expression, without the `FORMULA:` prefix. Editing a verified formula clears the previous result
-and strategy highlight until the new formula is verified. The
-checker has a 120-second timeout and input files are limited to 2 MB; graph
+The browser sends the current specification editor contents to the server for
+each action. Changes remain in the app and are never saved to the original file;
+they are lost on page reload. Editing the specification clears the previous
+models and verification result, so generate again before verifying.
+Each run uses an isolated temporary directory which is deleted afterwards.
+Verification regenerates the models using the current specification and the
+formula in the formula editor, passed to STV as an override. Enter only the
+expression, without the `FORMULA:` prefix. Editing a verified formula clears the
+previous result and strategy highlight until the new formula is verified. The
+checker has a 120-second timeout and specifications are limited to 2 MB; graph
 files are limited to 25 MB each. Transition labels are hidden on graphs with
 more than 100 transitions, but remain available by selecting a transition.
 The development server is intended for local, trusted use; do not expose it to
@@ -41,4 +45,5 @@ untrusted users without appropriate isolation, resource limits and authenticatio
 
 ```sh
 python -m unittest discover -s tests
+node --test tests/editor.test.cjs
 ```

@@ -24,9 +24,11 @@
       <label class="upload" for="model-file">
         <span class="upload-icon">↑</span>
         <strong id="file-label">Choose a model file</strong>
-        <span>Upload a specification to begin</span>
+        <span>Load a specification from your device</span>
         <small>TEXT FILE · UP TO 2 MB</small>
       </label>
+      <button id="open-editor" class="button secondary editor-button" type="button">✎ &nbsp; Edit specification</button>
+      <p id="model-source" class="formula-help" role="status">Load a file or write a specification in the editor.</p>
       <div class="field-label">MODEL CHECKER <span>AVAILABLE</span></div>
       <div class="checker"><span class="checker-icon">⌘</span><span><strong>STV v2</strong><small>Strategic Verifier</small></span><span class="check">✓</span></div>
       <button id="generate" class="button primary" disabled>Generate models <span>→</span></button>
@@ -57,8 +59,8 @@
           <div id="empty" class="empty">
             <div class="empty-art"><span class="orbit o1"></span><span class="orbit o2"></span><span class="orbit o3"></span><span class="empty-center">◈</span><i class="point p1"></i><i class="point p2"></i><i class="point p3"></i></div>
             <h3>Your model starts here</h3>
-            <p>Upload a specification and generate your models to explore the states and transitions.</p>
-            <span class="empty-hint">UPLOAD A FILE TO GET STARTED <b>↗</b></span>
+            <p>Load or write a specification and generate your models to explore the states and transitions.</p>
+            <span class="empty-hint">ADD A SPECIFICATION TO GET STARTED <b>↗</b></span>
           </div>
           <div id="loading" class="loading" role="status" aria-live="polite" hidden><div class="spinner"></div><strong id="loading-title">Working on your model</strong><span>Complex models may take a little longer.</span></div>
           <div id="canvas-hint" class="canvas-hint" hidden>DRAG TO MOVE <span>·</span> SCROLL TO ZOOM <span>·</span> CLICK TO INSPECT</div>
@@ -68,5 +70,14 @@
       <div class="bottom-row"><div class="info-card"><span class="info-icon">⌁</span><div><strong>Made for exploration</strong><p>Drag states to rearrange. Select a state or transition to inspect its details.</p></div></div><div class="info-card details-card"><span class="info-icon">◎</span><div><strong>Selection details</strong><p id="details">Select an element in the graph to see its details.</p></div></div></div>
     </section>
   </main>
+  <dialog id="editor-dialog" aria-labelledby="editor-title" aria-describedby="editor-help">
+    <div class="editor-header">
+      <div><div class="eyebrow">SPECIFICATION EDITOR</div><h2 id="editor-title">Edit model specification</h2><p id="editor-help">Write or paste a specification, or edit the loaded file. Changes last until the page is reloaded and never modify the original file.</p></div>
+      <button id="close-editor" class="tool-button editor-close" type="button" aria-label="Close editor">×</button>
+    </div>
+    <label class="sr-only" for="specification">Model specification</label>
+    <textarea id="specification" spellcheck="false" wrap="off" placeholder="Write or paste your model specification here"></textarea>
+    <div class="editor-footer"><span>UTF-8 TEXT · UP TO 2 MB</span><button id="done-editing" class="button primary" type="button">Done editing</button></div>
+  </dialog>
 </body>
 </html>

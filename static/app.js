@@ -8,6 +8,12 @@ const resultBox = document.querySelector("#result");
 const errorBox = document.querySelector("#error");
 const details = document.querySelector("#details");
 const formulaInput = document.querySelector("#formula");
+const specificationInput = document.querySelector("#specification");
+const editorDialog = document.querySelector("#editor-dialog");
+const openEditorButton = document.querySelector("#open-editor");
+const modelSource = document.querySelector("#model-source");
+const MAX_SPECIFICATION_SIZE = 2 * 1024 * 1024;
+let sourceName = "";
 let graphs = [];
 let generated = false;
 let cy = null;
@@ -19,8 +25,10 @@ function showError(message) {
 
 function setBusy(busy) {
   fileInput.disabled = busy;
+  openEditorButton.disabled = busy;
+  specificationInput.disabled = busy;
   formulaInput.disabled = busy || !generated;
-  generateButton.disabled = busy || !fileInput.files.length;
+  generateButton.disabled = busy || !specificationInput.value.trim();
   verifyButton.disabled = busy || !generated || !formulaInput.value.trim();
   select.disabled = busy || !graphs.length;
   layoutButton.disabled = busy || !cy;
@@ -116,11 +124,16 @@ async function displayGraph(animate = false) {
 }
 
 async function submit(action) {
-  if (!fileInput.files.length) return;
+  if (!specificationInput.value.trim()) return;
   showError("");
+  const specification = new Blob([specificationInput.value], { type: "text/plain;charset=utf-8" });
+  if (specification.size > MAX_SPECIFICATION_SIZE) {
+    showError("The specification must be no larger than 2 MB.");
+    return;
+  }
   setBusy(true);
   const body = new FormData();
-  body.append("file", fileInput.files[0]);
+  body.append("file", specification, "model.txt");
   body.append("action", action);
   if (action === "verify") body.append("formula", formulaInput.value);
   try {
@@ -146,9 +159,40 @@ async function submit(action) {
   }
 }
 
-fileInput.addEventListener("change", () => {
-  document.querySelector("#file-label").textContent = fileInput.files[0]?.name || "Choose a model file";
-  reset();
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  setBusy(true);
+  try {
+    if (file.size > MAX_SPECIFICATION_SIZE) throw new Error("The specification file must be no larger than 2 MB.");
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+    specificationInput.value = text;
+    sourceName = file.name;
+    document.querySelector("#file-label").textContent = file.name;
+    modelSource.textContent = `Loaded from ${file.name}. The original file will not be changed.`;
+    reset();
+  } catch (error) {
+    showError(error instanceof TypeError ? "The specification file must be UTF-8 text." : `Could not load file: ${error.message}`);
+  } finally {
+    fileInput.value = "";
+    setBusy(false);
+  }
+});
+openEditorButton.addEventListener("click", () => {
+  editorDialog.showModal();
+  specificationInput.focus();
+});
+document.querySelector("#close-editor").addEventListener("click", () => editorDialog.close());
+document.querySelector("#done-editing").addEventListener("click", () => editorDialog.close());
+specificationInput.addEventListener("input", () => {
+  if (generated || graphs.length) reset();
+  else {
+    showError("");
+    setBusy(false);
+  }
+  modelSource.textContent = sourceName
+    ? `Edited from ${sourceName}. The original file will not be changed.`
+    : "Specification written in the editor. Changes last until the page is reloaded.";
 });
 formulaInput.addEventListener("input", () => {
   resultBox.hidden = true;
