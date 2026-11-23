@@ -1,0 +1,52 @@
+digraph "Voter1||Coercer1"{
+	label="GlobalModel of Voter1||Coercer1"
+	edge[fontsize="10"]
+	node [
+		shape=circle,
+		width=auto,
+		color="black",
+		fillcolor="#eeeeee",
+		style="filled,solid",
+		fontsize=8,
+		fontname="Roboto"
+	]
+	fontname=Consolas
+	layout=dot
+	"0;0;"[label="{{q0,q0|0;0;}|{/* lid = 0*/\nVoter1_vote=0}|{/* lid = 0*/\nCoercer1_Voter1_gv=0\nCoercer1_Voter1_vote=0\nCoercer1_npun1=0\nCoercer1_pun1=0}}", shape="record"]
+	"1;0;"[label="{{q1,q0|1;0;}|{/* lid = 1*/\nVoter1_vote=1}|{/* lid = 0*/\nCoercer1_Voter1_gv=0\nCoercer1_Voter1_vote=0\nCoercer1_npun1=0\nCoercer1_pun1=0}}", shape="record"]
+	"2;0;"[label="{{q1,q0|2;0;}|{/* lid = 2*/\nVoter1_vote=2}|{/* lid = 0*/\nCoercer1_Voter1_gv=0\nCoercer1_Voter1_vote=0\nCoercer1_npun1=0\nCoercer1_pun1=0}}", shape="record"]
+	"3;1;"[label="{{q2,q1|3;1;}|{/* lid = 3*/\nVoter1_vote=1}|{/* lid = 1*/\nCoercer1_Voter1_gv=1\nCoercer1_Voter1_vote=1\nCoercer1_npun1=0\nCoercer1_pun1=0}}", shape="record"]
+	"3;3;"[label="{{q2,q1|3;3;}|{/* lid = 3*/\nVoter1_vote=1}|{/* lid = 3*/\nCoercer1_Voter1_gv=2\nCoercer1_Voter1_vote=0\nCoercer1_npun1=0\nCoercer1_pun1=0}}", shape="record"]
+	"4;2;"[label="{{q2,q1|4;2;}|{/* lid = 4*/\nVoter1_vote=2}|{/* lid = 2*/\nCoercer1_Voter1_gv=1\nCoercer1_Voter1_vote=2\nCoercer1_npun1=0\nCoercer1_pun1=0}}", shape="record"]
+	"4;3;"[label="{{q2,q1|4;3;}|{/* lid = 4*/\nVoter1_vote=2}|{/* lid = 3*/\nCoercer1_Voter1_gv=2\nCoercer1_Voter1_vote=0\nCoercer1_npun1=0\nCoercer1_pun1=0}}", shape="record"]
+	"5;5;"[label="{{q3,q2|5;5;}|{/* lid = 5*/\nVoter1_vote=1}|{/* lid = 5*/\nCoercer1_Voter1_gv=1\nCoercer1_Voter1_vote=1\nCoercer1_npun1=1\nCoercer1_pun1=0}}", shape="record"]
+	"5;4;"[label="{{q3,q2|5;4;}|{/* lid = 5*/\nVoter1_vote=1}|{/* lid = 4*/\nCoercer1_Voter1_gv=1\nCoercer1_Voter1_vote=1\nCoercer1_npun1=0\nCoercer1_pun1=1}}", shape="record"]
+	"5;9;"[label="{{q3,q2|5;9;}|{/* lid = 5*/\nVoter1_vote=1}|{/* lid = 9*/\nCoercer1_Voter1_gv=2\nCoercer1_Voter1_vote=0\nCoercer1_npun1=1\nCoercer1_pun1=0}}", shape="record"]
+	"5;8;"[label="{{q3,q2|5;8;}|{/* lid = 5*/\nVoter1_vote=1}|{/* lid = 8*/\nCoercer1_Voter1_gv=2\nCoercer1_Voter1_vote=0\nCoercer1_npun1=0\nCoercer1_pun1=1}}", shape="record"]
+	"6;7;"[label="{{q3,q2|6;7;}|{/* lid = 6*/\nVoter1_vote=2}|{/* lid = 7*/\nCoercer1_Voter1_gv=1\nCoercer1_Voter1_vote=2\nCoercer1_npun1=1\nCoercer1_pun1=0}}", shape="record"]
+	"6;6;"[label="{{q3,q2|6;6;}|{/* lid = 6*/\nVoter1_vote=2}|{/* lid = 6*/\nCoercer1_Voter1_gv=1\nCoercer1_Voter1_vote=2\nCoercer1_npun1=0\nCoercer1_pun1=1}}", shape="record"]
+	"6;9;"[label="{{q3,q2|6;9;}|{/* lid = 6*/\nVoter1_vote=2}|{/* lid = 9*/\nCoercer1_Voter1_gv=2\nCoercer1_Voter1_vote=0\nCoercer1_npun1=1\nCoercer1_pun1=0}}", shape="record"]
+	"6;8;"[label="{{q3,q2|6;8;}|{/* lid = 6*/\nVoter1_vote=2}|{/* lid = 8*/\nCoercer1_Voter1_gv=2\nCoercer1_Voter1_vote=0\nCoercer1_npun1=0\nCoercer1_pun1=1}}", shape="record"]
+	"0;0;"->"1;0;"[label="[0]_vote1", color="red"]
+	"0;0;"->"2;0;"[label="[0]_vote2", color="red"]
+	"1;0;"->"3;1;"[label="gv_1_Voter1,gv_1_Voter1", color="blue"]
+	"1;0;"->"3;3;"[label="ng_Voter1,ng_Voter1", color="blue"]
+	"2;0;"->"4;2;"[label="gv_2_Voter1,gv_2_Voter1", color="red"]
+	"2;0;"->"4;3;"[label="ng_Voter1,ng_Voter1", color="red"]
+	"3;1;"->"5;5;"[label="npun_Voter1,npun_Voter1", color="blue"]
+	"3;1;"->"5;4;"[label="pun_Voter1,pun_Voter1", color="blue"]
+	"3;3;"->"5;9;"[label="npun_Voter1,npun_Voter1", color="blue"]
+	"3;3;"->"5;8;"[label="pun_Voter1,pun_Voter1", color="blue"]
+	"4;2;"->"6;7;"[label="npun_Voter1,npun_Voter1", color="blue"]
+	"4;2;"->"6;6;"[label="pun_Voter1,pun_Voter1", color="red"]
+	"4;3;"->"6;9;"[label="npun_Voter1,npun_Voter1", color="blue"]
+	"4;3;"->"6;8;"[label="pun_Voter1,pun_Voter1", color="red"]
+	"5;5;"->"5;5;"[label="[0]_idle"]
+	"5;4;"->"5;4;"[label="[0]_idle"]
+	"5;9;"->"5;9;"[label="[0]_idle"]
+	"5;8;"->"5;8;"[label="[0]_idle"]
+	"6;7;"->"6;7;"[label="[0]_idle"]
+	"6;6;"->"6;6;"[label="[0]_idle"]
+	"6;9;"->"6;9;"[label="[0]_idle"]
+	"6;8;"->"6;8;"[label="[0]_idle"]
+}

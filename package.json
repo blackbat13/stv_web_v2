@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Browser graph renderer for the STV workbench",
+  "dependencies": {
+    "cytoscape": "^3.33.1"
+  }
+}
