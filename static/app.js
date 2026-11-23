@@ -22,11 +22,15 @@ const editorDialog = document.querySelector("#editor-dialog");
 const openEditorButton = document.querySelector("#open-editor");
 const modelSource = document.querySelector("#model-source");
 const MAX_SPECIFICATION_SIZE = 2 * 1024 * 1024;
+const MAX_LOOP_ADJUSTMENT_NODES = 500;
+const MAX_LOOP_ADJUSTMENT_EDGES = 1500;
+const MAX_LOOP_INCIDENT_SAMPLES = 100;
 let sourceName = "";
 let loadingSpecification = false;
 let graphs = [];
 let generated = false;
 let cy = null;
+let adjustLoops = null;
 
 function showError(message) {
   errorBox.textContent = message;
@@ -53,10 +57,13 @@ function reset() {
   formulaInput.value = "";
   if (cy) cy.destroy();
   cy = null;
+  adjustLoops = null;
   select.replaceChildren(new Option("No model generated", ""));
   document.querySelector("#empty").hidden = false;
   document.querySelector("#canvas-hint").hidden = true;
-  document.querySelector("#counts").textContent = "— states  /  — transitions";
+  document.querySelector("#state-count").textContent = "—";
+  document.querySelector("#transition-count").textContent = "—";
+  document.querySelector("#agent-count").textContent = "—";
   document.querySelector("#graph-title").textContent = "Explore your model";
   document.querySelector("#graph-subtitle").textContent = "A clearer view of your system's state space.";
   document.querySelector("#breadcrumb").textContent = "OVERVIEW";
@@ -64,6 +71,116 @@ function reset() {
   resultBox.hidden = true;
   showError("");
   setBusy(false);
+}
+
+function loopLabelMargins(direction) {
+  return {
+    "text-margin-x": 14 * Math.sin(direction),
+    "text-margin-y": -14 * Math.cos(direction)
+  };
+}
+
+function setupLoopAdjustment(instance, graph) {
+  if (graph.nodes.length > MAX_LOOP_ADJUSTMENT_NODES || graph.edges.length > MAX_LOOP_ADJUSTMENT_EDGES) return null;
+
+  const loops = new Map();
+  for (const edge of graph.edges) {
+    const { id, source, target } = edge.data;
+    if (source === target) {
+      if (!loops.has(source)) loops.set(source, { edges: [], incident: [] });
+      loops.get(source).edges.push(id);
+    }
+  }
+  if (!loops.size) return null;
+
+  const affected = new Map();
+  for (const id of loops.keys()) affected.set(id, new Set([id]));
+  for (const edge of graph.edges) {
+    const { id, source, target } = edge.data;
+    if (source === target) continue;
+    for (const [node, neighbor] of [[source, target], [target, source]]) {
+      if (!loops.has(node)) continue;
+      loops.get(node).incident.push({ id, source: node === source, neighbor });
+      if (!affected.has(neighbor)) affected.set(neighbor, new Set());
+      affected.get(neighbor).add(node);
+    }
+  }
+
+  function adjust(ids = loops.keys()) {
+    const updates = [];
+    for (const id of ids) {
+      const { edges, incident } = loops.get(id);
+      const position = instance.getElementById(id).position();
+      const angles = [];
+      const sampleCount = Math.min(incident.length, MAX_LOOP_INCIDENT_SAMPLES);
+      for (let i = 0; i < sampleCount; i++) {
+        const index = sampleCount === 1 ? 0 : Math.floor(i * (incident.length - 1) / (sampleCount - 1));
+        const item = incident[index];
+        const edge = instance.getElementById(item.id);
+        const endpoint = item.source ? edge.sourceEndpoint() : edge.targetEndpoint();
+        let dx = endpoint && endpoint.x - position.x;
+        let dy = endpoint && endpoint.y - position.y;
+        if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) {
+          const neighbor = instance.getElementById(item.neighbor).position();
+          dx = neighbor.x - position.x;
+          dy = neighbor.y - position.y;
+        }
+        if (Number.isFinite(dx) && Number.isFinite(dy) && (dx !== 0 || dy !== 0)) {
+          angles.push((Math.atan2(dy, dx) + 2 * Math.PI) % (2 * Math.PI));
+        }
+      }
+      if (!angles.length) continue;
+      angles.sort((a, b) => a - b);
+      let widest = -1;
+      let direction = 0;
+      for (let i = 0; i < angles.length; i++) {
+        const next = i + 1 < angles.length ? angles[i + 1] : angles[0] + 2 * Math.PI;
+        const gap = next - angles[i];
+        if (gap > widest) {
+          widest = gap;
+          direction = angles[i] + gap / 2;
+        }
+      }
+      // Cytoscape measures loop direction clockwise from up, rather than from the x-axis.
+      const loopDirection = (direction + Math.PI / 2) % (2 * Math.PI);
+      updates.push({
+        edges,
+        direction: `${loopDirection * 180 / Math.PI}deg`,
+        labelMargins: loopLabelMargins(loopDirection),
+        sweep: `${-Math.max(30, Math.min(90, widest * 0.8 * 180 / Math.PI))}deg`
+      });
+    }
+    instance.batch(() => {
+      for (const update of updates) {
+        for (const id of update.edges) {
+          instance.getElementById(id).style({
+            "loop-direction": update.direction, "loop-sweep": update.sweep, ...update.labelMargins
+          });
+        }
+      }
+    });
+  }
+
+  const pending = new Set();
+  let scheduled = false;
+  instance.on("dragfree", "node", event => {
+    const ids = affected.get(event.target.id());
+    if (!ids) return;
+    for (const id of ids) pending.add(id);
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      try {
+        if (!instance.destroyed()) adjust(pending);
+      } catch (error) {
+        showError(`Could not adjust self-loops: ${error.message}`);
+      } finally {
+        pending.clear();
+      }
+    });
+  });
+  return adjust;
 }
 
 function runLayout(animate = false) {
@@ -81,8 +198,19 @@ function runLayout(animate = false) {
     });
     Object.assign(options, { directed: true, roots });
   }
-  return new Promise(resolve => {
-    cy.layout({ ...options, stop: resolve }).run();
+  return new Promise((resolve, reject) => {
+    const instance = cy;
+    instance.layout({ ...options, stop: () => {
+      try {
+        if (instance === cy && adjustLoops) {
+          adjustLoops();
+          instance.fit(undefined, 55);
+        }
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    } }).run();
   });
 }
 
@@ -92,12 +220,15 @@ async function displayGraph(animate = false) {
   if (cy) {
     cy.destroy();
     cy = null;
+    adjustLoops = null;
   }
   const title = graph.kind === "global" ? "Global model" : `${graph.name} · Local model`;
   document.querySelector("#graph-title").textContent = title;
   document.querySelector("#graph-subtitle").textContent = graph.kind === "global" ? "The combined state space of the system." : `The state space of agent ${graph.name}.`;
   document.querySelector("#breadcrumb").textContent = graph.kind === "global" ? "GLOBAL MODEL" : "LOCAL MODEL";
-  document.querySelector("#counts").textContent = `${graph.nodes.length} states  /  ${graph.edges.length} transitions`;
+  document.querySelector("#state-count").textContent = graph.nodes.length;
+  document.querySelector("#transition-count").textContent = graph.edges.length;
+  document.querySelector("#agent-count").textContent = graphs.filter(item => item.kind === "local").length;
   document.querySelector("#empty").hidden = true;
   document.querySelector("#canvas-hint").hidden = false;
   details.textContent = "Select an element in the graph to see its details.";
@@ -120,6 +251,9 @@ async function displayGraph(animate = false) {
         "font-size": 9, "color": "#6a7890", "text-rotation": "autorotate",
         "text-background-opacity": 0, "text-margin-y": -14
       }},
+      { selector: "edge:loop", style: {
+        "loop-direction": "-45deg", ...loopLabelMargins(-Math.PI / 4)
+      }},
       { selector: 'edge[kind = "shared"]', style: { "line-color": "#648fc4", "target-arrow-color": "#648fc4" }},
       { selector: 'edge[kind = "strategy"]', style: { "line-color": "#e35d55", "target-arrow-color": "#e35d55", "width": 3 }},
       { selector: ":selected", style: { "overlay-color": "#4369db", "overlay-opacity": 0.15, "overlay-padding": 7 }}
@@ -133,6 +267,7 @@ async function displayGraph(animate = false) {
     const edge = event.target;
     details.textContent = `${edge.data("source")} → ${edge.data("target")}\n${edge.data("label") || "Unlabelled transition"}\n${edge.data("kind") === "strategy" ? "Strategy transition" : edge.data("kind") === "shared" ? "Shared transition" : "Transition"}`;
   });
+  adjustLoops = setupLoopAdjustment(cy, graph);
   await runLayout(animate);
 }
 

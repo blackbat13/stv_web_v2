@@ -8,6 +8,8 @@ global model when verification succeeds; blue transitions are shared actions.
 Choose between force-directed, layered, circle and grid layouts. The selected
 layout is used when switching models and can be reapplied with the rearrange
 button. Drag states, zoom, fit the graph, and click an element for details.
+Model statistics show the states and transitions in the selected graph and
+the number of agents in the system. Parallel transitions are counted separately.
 
 ## Run on Linux
 
@@ -43,6 +45,11 @@ previous result and strategy highlight until the new formula is verified. The
 checker has a 120-second timeout and specifications are limited to 2 MB; graph
 files are limited to 25 MB each. Transition labels are hidden on graphs with
 more than 100 transitions, but remain available by selecting a transition.
+Self-loop labels are placed outside the loop.
+For graphs with at most 500 states and 1,500 transitions, self-loops are directed
+toward gaps between incident transitions after a layout or node drag. At most
+100 incident transitions per state are sampled; larger graphs retain
+Cytoscape's default loop positioning for responsiveness.
 The development server is intended for local, trusted use; do not expose it to
 untrusted users without appropriate isolation, resource limits and authentication.
 

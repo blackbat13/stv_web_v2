@@ -7,14 +7,21 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const source = fs.readFileSync(path.join(root, "static", "app.js"), "utf8");
 
-function createApp() {
+function createApp(requestAnimationFrame = callback => callback()) {
   const elements = new Map();
   const requests = [];
   const layouts = [];
+  const responseGraphs = [
+    { id: "global", name: "Global model", kind: "global", nodes: [{ data: { id: "a" } }, { data: { id: "b" } }, { data: { id: "c" } }], edges: [{ data: { source: "a", target: "b" } }, { data: { source: "b", target: "c" } }, { data: { source: "c", target: "a" } }] },
+    { id: "local", name: "Agent", kind: "local", nodes: [{ data: { id: "a" } }, { data: { id: "b" } }], edges: [{ data: { source: "a", target: "b" } }, { data: { source: "a", target: "b" } }] },
+    { id: "local-2", name: "Other", kind: "local", nodes: [{ data: { id: "a" } }], edges: [] },
+  ];
   function element(selector) {
     if (!elements.has(selector)) {
       elements.set(selector, {
-        value: "", textContent: "", disabled: false, hidden: false, files: [],
+        value: "", _textContent: "", disabled: false, hidden: false, files: [],
+        get textContent() { return this._textContent; },
+        set textContent(value) { this._textContent = String(value); },
         listeners: {},
         addEventListener(type, handler) { this.listeners[type] = handler; },
         async emit(type) { return this.listeners[type](); },
@@ -58,9 +65,9 @@ function createApp() {
     document: { querySelector: element },
     Option: function (text, value) { this.text = text; this.value = value; },
     Blob, FormData, TextDecoder, TypeError,
-    requestAnimationFrame(callback) { callback(); },
+    requestAnimationFrame,
     CodeMirror: { fromTextArea() { return editor; } },
-    cytoscape() { return graph; },
+    cytoscape(options) { graph.styles = options.style; return graph; },
     async fetch(_url, options) {
       requests.push({
         specification: await options.body.get("file").text(),
@@ -72,10 +79,7 @@ function createApp() {
         async json() {
           return {
             formula: "<<A>><>(x == 1)", result: true,
-            graphs: [
-              { id: "global", name: "Global model", kind: "global", nodes: [], edges: [] },
-              { id: "local", name: "Agent", kind: "local", nodes: [], edges: [] },
-            ],
+            graphs: responseGraphs,
           };
         },
       };
@@ -83,7 +87,7 @@ function createApp() {
   };
   element("#layout-select").value = "cose";
   vm.runInNewContext(source, context);
-  return { element, requests, editor, layouts, graph };
+  return { element, requests, editor, layouts, graph, responseGraphs, context };
 }
 
 test("loaded file edits are used for generation and verification", async () => {
@@ -138,6 +142,41 @@ test("invalid UTF-8 input does not replace the current specification", async () 
   assert.match(app.element("#error").textContent, /UTF-8/);
 });
 
+test("statistics follow the selected model and clear when its specification changes", async () => {
+  const app = createApp();
+  app.editor.type("Agent A:\ninit q0");
+  await app.element("#generate").emit("click");
+  assert.equal(app.element("#state-count").textContent, "3");
+  assert.equal(app.element("#transition-count").textContent, "3");
+  assert.equal(app.element("#agent-count").textContent, "2");
+
+  app.element("#graph-select").value = "local";
+  await app.element("#graph-select").emit("change");
+  assert.equal(app.element("#state-count").textContent, "2");
+  assert.equal(app.element("#transition-count").textContent, "2");
+  assert.equal(app.element("#agent-count").textContent, "2");
+
+  app.element("#graph-select").value = "local-2";
+  await app.element("#graph-select").emit("change");
+  assert.equal(app.element("#state-count").textContent, "1");
+  assert.equal(app.element("#transition-count").textContent, "0");
+  assert.equal(app.element("#agent-count").textContent, "2");
+
+  app.element("#graph-select").value = "local";
+  await app.element("#graph-select").emit("change");
+  app.responseGraphs[1].nodes.push({ data: { id: "c" } });
+  app.responseGraphs[1].edges.pop();
+  await app.element("#verify").emit("click");
+  assert.equal(app.element("#state-count").textContent, "3");
+  assert.equal(app.element("#transition-count").textContent, "1");
+  assert.equal(app.element("#agent-count").textContent, "2");
+
+  app.editor.type("Changed specification");
+  for (const id of ["#state-count", "#transition-count", "#agent-count"]) {
+    assert.equal(app.element(id).textContent, "—");
+  }
+});
+
 test("selected layout is applied, reapplied and preserved across model switches", async () => {
   const app = createApp();
   app.editor.type("Agent A:\ninit q0");
@@ -169,4 +208,130 @@ test("selected layout is applied, reapplied and preserved across model switches"
   assert.match(app.element("#error").textContent, /Could not arrange model: layout failed/);
   assert.equal(app.element("#layout-select").disabled, false);
   assert.equal(app.element("#loading").hidden, true);
+});
+
+test("self-loops avoid incident edges and update after a neighboring node moves", () => {
+  const frames = [];
+  const app = createApp(callback => frames.push(callback));
+  const positions = { a: { x: 0, y: 0 }, b: { x: 100, y: 0 }, c: { x: 0, y: -100 }, d: { x: 200, y: 200 } };
+  const styles = new Map();
+  const elements = {
+    a: { position: () => positions.a },
+    b: { position: () => positions.b },
+    c: { position: () => positions.c },
+    d: { position: () => positions.d },
+    loop: { style: value => styles.set("loop", value) },
+    loop2: { style: value => styles.set("loop2", value) },
+    isolated: { style: value => styles.set("isolated", value) },
+    out: { sourceEndpoint: () => ({ x: positions.b.x / 5, y: positions.b.y / 5 }) },
+    incoming: { targetEndpoint: () => ({ x: positions.c.x / 5, y: positions.c.y / 5 }) },
+  };
+  let onDragFree;
+  const instance = {
+    getElementById: id => elements[id],
+    batch: callback => callback(),
+    on: (_event, _selector, handler) => { onDragFree = handler; },
+    destroyed: () => false,
+  };
+  const graph = {
+    nodes: [{}, {}, {}, {}],
+    edges: [
+      { data: { id: "loop", source: "a", target: "a" } },
+      { data: { id: "loop2", source: "a", target: "a" } },
+      { data: { id: "isolated", source: "d", target: "d" } },
+      { data: { id: "out", source: "a", target: "b" } },
+      { data: { id: "incoming", source: "c", target: "a" } },
+    ],
+  };
+  const adjust = app.context.setupLoopAdjustment(instance, graph);
+  adjust();
+  const direction = () => parseFloat(styles.get("loop")["loop-direction"]);
+  const outside = () => {
+    const style = styles.get("loop");
+    const angle = direction() * Math.PI / 180;
+    return style["text-margin-x"] * Math.sin(angle) - style["text-margin-y"] * Math.cos(angle);
+  };
+  assert.ok(Math.abs(direction() - 225) < 0.001);
+  assert.ok(outside() > 10);
+  assert.equal(styles.get("loop2")["loop-direction"], styles.get("loop")["loop-direction"]);
+  assert.equal(styles.has("isolated"), false);
+  positions.b = { x: -100, y: 0 };
+  elements.out.sourceEndpoint = () => ({ x: NaN, y: NaN });
+  onDragFree({ target: { id: () => "b" } });
+  onDragFree({ target: { id: () => "c" } });
+  assert.equal(frames.length, 1);
+  frames[0]();
+  assert.ok(Math.abs(direction() - 135) < 0.001);
+  assert.ok(outside() > 10);
+});
+
+test("default loop labels are offset outward without changing ordinary edge labels", async () => {
+  const app = createApp();
+  app.editor.type("Agent A:\ninit q0");
+  await app.element("#generate").emit("click");
+  const cy = require("cytoscape")({
+    headless: true, styleEnabled: true, style: app.graph.styles,
+    elements: [
+      { data: { id: "a" } }, { data: { id: "b" } },
+      { data: { id: "loop", source: "a", target: "a", label: "loop" } },
+      { data: { id: "edge", source: "a", target: "b", label: "edge" } },
+    ],
+  });
+  const loop = cy.getElementById("loop");
+  const angle = loop.pstyle("loop-direction").pfValue;
+  const x = loop.pstyle("text-margin-x").pfValue;
+  const y = loop.pstyle("text-margin-y").pfValue;
+  assert.ok(x * Math.sin(angle) - y * Math.cos(angle) > 10);
+  assert.equal(cy.getElementById("edge").pstyle("text-margin-y").pfValue, -14);
+  cy.destroy();
+});
+
+test("loop label offsets remain outside across all directions", () => {
+  const app = createApp();
+  for (let i = 0; i < 32; i++) {
+    const angle = i * Math.PI / 16;
+    const margins = app.context.loopLabelMargins(angle);
+    const x = margins["text-margin-x"];
+    const y = margins["text-margin-y"];
+    assert.ok(x * Math.sin(angle) - y * Math.cos(angle) > 4.5);
+    assert.ok(Math.abs(x * Math.cos(angle) + y * Math.sin(angle)) < 1e-9);
+  }
+});
+
+test("self-loop adjustment is bounded by both graph size thresholds", () => {
+  const app = createApp();
+  const instance = { on() {} };
+  const loop = { data: { id: "loop", source: "a", target: "a" } };
+  const other = { data: { id: "other", source: "b", target: "c" } };
+  const graph = { nodes: Array(500).fill({}), edges: [loop, ...Array(1499).fill(other)] };
+  assert.equal(typeof app.context.setupLoopAdjustment(instance, graph), "function");
+  assert.equal(app.context.setupLoopAdjustment(instance, { ...graph, nodes: Array(501).fill({}) }), null);
+  assert.equal(app.context.setupLoopAdjustment(instance, { ...graph, edges: [...graph.edges, other] }), null);
+});
+
+test("self-loop adjustment limits geometry reads for highly connected states", () => {
+  const app = createApp();
+  let endpointReads = 0;
+  let style;
+  const elements = {
+    a: { position: () => ({ x: 0, y: 0 }) },
+    b: { position: () => ({ x: 100, y: 0 }) },
+    loop: { style: value => { style = value; } },
+    edge: { sourceEndpoint: () => { endpointReads++; return { x: 24, y: 0 }; } },
+  };
+  const instance = {
+    getElementById: id => elements[id],
+    batch: callback => callback(),
+    on() {},
+  };
+  const graph = {
+    nodes: [{}, {}],
+    edges: [
+      { data: { id: "loop", source: "a", target: "a" } },
+      ...Array.from({ length: 201 }, () => ({ data: { id: "edge", source: "a", target: "b" } })),
+    ],
+  };
+  app.context.setupLoopAdjustment(instance, graph)();
+  assert.equal(endpointReads, 100);
+  assert.ok(Number.isFinite(parseFloat(style["loop-direction"])));
 });
