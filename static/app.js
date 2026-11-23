@@ -113,8 +113,7 @@ async function displayGraph(animate = false) {
         "target-arrow-color": "#a7b3c4", "target-arrow-shape": "triangle",
         "arrow-scale": 0.8, "label": graph.edges.length <= 100 ? "data(label)" : "",
         "font-size": 9, "color": "#6a7890", "text-rotation": "autorotate",
-        "text-background-color": "#ffffff", "text-background-opacity": 0.85,
-        "text-background-padding": 2, "text-margin-y": -6
+        "text-background-opacity": 0, "text-margin-y": -14
       }},
       { selector: 'edge[kind = "shared"]', style: { "line-color": "#648fc4", "target-arrow-color": "#648fc4" }},
       { selector: 'edge[kind = "strategy"]', style: { "line-color": "#e35d55", "target-arrow-color": "#e35d55", "width": 3 }},
