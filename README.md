@@ -11,6 +11,11 @@ layout is used when switching models and can be reapplied with the rearrange
 button. Drag states, zoom, fit the graph, and click an element for details.
 Model statistics show the states and transitions in the selected graph and
 the number of agents in the system. Parallel transitions are counted separately.
+The interface shows wall-clock times for the last successful generation and
+verification runs. These measure the STV process, including its input processing
+and DOT-file output where requested, but exclude graph parsing and display.
+Normal verification (`-m 3`) includes model generation; on-the-fly verification
+(`-m 2`) does not pre-generate the global model.
 
 ## Run on Linux
 

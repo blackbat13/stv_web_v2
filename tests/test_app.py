@@ -53,6 +53,37 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn("timed out", response.json["error"])
 
+    def test_checker_time_excludes_graph_parsing(self):
+        def fake_run(command, **kwargs):
+            self.assertEqual(clock.call_count, 1)
+            workdir = Path(kwargs["cwd"])
+            (workdir / "model-GlobalModel.dot").touch()
+            (workdir / "model-LocalModel_A.dot").touch()
+            kwargs["stdout"].write(b"Verification result: TRUE\n")
+            return subprocess.CompletedProcess(command, 0)
+
+        for action in ("generate", "verify"):
+            with self.subTest(action=action), patch("app.time.perf_counter", side_effect=[100.0, 100.375]) as clock:
+                def fake_parse(path, name, kind):
+                    self.assertEqual(clock.call_count, 2)
+                    return {"id": path.name, "name": name, "kind": kind, "nodes": [], "edges": []}
+
+                with patch("app.subprocess.run", side_effect=fake_run), patch("app.parse_graph", side_effect=fake_parse):
+                    response = self.upload(b"FORMULA: x", action)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json["checker_seconds"], 0.375)
+
+    def test_on_the_fly_checker_time_is_reported(self):
+        def fake_run(command, **kwargs):
+            kwargs["stdout"].write(b"Verification result: TRUE\n")
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch("app.time.perf_counter", side_effect=[10.0, 10.125]), patch("app.subprocess.run", side_effect=fake_run):
+            response = self.upload(b"model", "verify", on_the_fly="1")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["checker_seconds"], 0.125)
+        self.assertEqual(response.json["graphs"], [])
+
     def test_oversized_checker_output_is_not_silently_truncated(self):
         def fake_run(command, **kwargs):
             kwargs["stdout"].write(b"x" * (MAX_OUTPUT_SIZE + 1))

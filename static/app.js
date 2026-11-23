@@ -69,6 +69,8 @@ function setBusy(busy) {
 
 function clearVerification() {
   resultBox.hidden = true;
+  document.querySelector("#verification-time").textContent = "—";
+  document.querySelector("#verification-time-label").textContent = "Last verification run";
   naturalStrategyText = "";
   counterexampleText = "";
   naturalStrategyButton.hidden = true;
@@ -86,6 +88,7 @@ function clearVerification() {
 
 function reset(keepFormula = false) {
   clearVerification();
+  document.querySelector("#generation-time").textContent = "—";
   graphs = [];
   generated = false;
   if (!keepFormula) formulaInput.value = "";
@@ -104,6 +107,10 @@ function reset(keepFormula = false) {
   details.textContent = "Select an element in the graph to see its details.";
   showError("");
   setBusy(false);
+}
+
+function formatRunTime(seconds) {
+  return seconds > 0 && seconds < 0.001 ? "< 0.001 s" : `${seconds.toFixed(3)} s`;
 }
 
 function extractFormula(specification) {
@@ -325,6 +332,7 @@ async function submit(action) {
     return;
   }
   clearVerification();
+  if (action === "generate") document.querySelector("#generation-time").textContent = "—";
   setBusy(true);
   const onTheFly = action === "verify" && onTheFlyOption.checked;
   const body = new FormData();
@@ -341,6 +349,9 @@ async function submit(action) {
     const response = await fetch("/api/models", { method: "POST", body });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "The request failed.");
+    if (typeof data.checker_seconds !== "number" || !Number.isFinite(data.checker_seconds) || data.checker_seconds < 0) {
+      throw new Error("The model checker did not report a valid run time.");
+    }
     warningsBox.textContent = (data.warnings || []).join("\n");
     warningsBox.hidden = !warningsBox.textContent;
     if (!onTheFly) {
@@ -351,6 +362,13 @@ async function submit(action) {
       select.replaceChildren(...graphs.map(graph => new Option(graph.kind === "global" ? "Global model" : `${graph.name} · Local model`, graph.id)));
       if (graphs.some(graph => graph.id === previous)) select.value = previous;
       await displayGraph();
+    }
+    if (action === "generate") {
+      document.querySelector("#generation-time").textContent = formatRunTime(data.checker_seconds);
+    } else {
+      document.querySelector("#verification-time-label").textContent = onTheFly
+        ? "Last on-the-fly verification" : "Last verification (includes generation)";
+      document.querySelector("#verification-time").textContent = formatRunTime(data.checker_seconds);
     }
     resultBox.hidden = action !== "verify";
     if (action === "verify") {

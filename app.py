@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import pydot
@@ -110,6 +111,7 @@ def run_checker(content, verify, formula=None, *, on_the_fly=False, epsilon=Fals
             command.extend(["--OVERWRITE_FORMULA", f"FORMULA: {formula}"])
         try:
             with tempfile.TemporaryFile(mode="w+b") as output:
+                started = time.perf_counter()
                 completed = subprocess.run(
                     command,
                     cwd=workdir,
@@ -118,6 +120,7 @@ def run_checker(content, verify, formula=None, *, on_the_fly=False, epsilon=Fals
                     timeout=TIMEOUT_SECONDS,
                     check=False,
                 )
+                checker_seconds = time.perf_counter() - started
                 output.seek(0)
                 output_bytes = output.read(MAX_OUTPUT_SIZE + 1)
         except subprocess.TimeoutExpired as exc:
@@ -159,6 +162,7 @@ def run_checker(content, verify, formula=None, *, on_the_fly=False, epsilon=Fals
             return {
                 "graphs": [], "result": result, "natural_strategy": strategy_text,
                 "counterexample": counterexample_text, "warnings": warnings,
+                "checker_seconds": checker_seconds,
             }
 
         global_path = workdir / "model-GlobalModel.dot"
@@ -178,6 +182,7 @@ def run_checker(content, verify, formula=None, *, on_the_fly=False, epsilon=Fals
         return {
             "graphs": graphs, "result": result, "natural_strategy": strategy_text,
             "counterexample": counterexample_text, "warnings": warnings,
+            "checker_seconds": checker_seconds,
         }
 
 

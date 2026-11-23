@@ -16,7 +16,7 @@ function createApp(requestAnimationFrame = callback => callback()) {
     { id: "local", name: "Agent", kind: "local", nodes: [{ data: { id: "a" } }, { data: { id: "b" } }], edges: [{ data: { source: "a", target: "b" } }, { data: { source: "a", target: "b" } }] },
     { id: "local-2", name: "Other", kind: "local", nodes: [{ data: { id: "a" } }], edges: [] },
   ];
-  const responseData = { formula: "<<A>><>(x == 1)", result: true, graphs: responseGraphs };
+  const responseData = { formula: "<<A>><>(x == 1)", result: true, graphs: responseGraphs, checker_seconds: 0.1234 };
   function element(selector) {
     if (!elements.has(selector)) {
       elements.set(selector, {
@@ -48,7 +48,7 @@ function createApp(requestAnimationFrame = callback => callback()) {
     layout(options) {
       layouts.push({ options, busy: element("#layout-select").disabled });
       if (this.failLayout) throw new Error("layout failed");
-      return { run() { options.stop(); } };
+      return { run() { if (graph.layoutDelay) setTimeout(options.stop, graph.layoutDelay); else options.stop(); } };
     },
   };
   const editor = {
@@ -248,6 +248,55 @@ test("on-the-fly verification preserves an existing graph without stale strategy
   assert.equal(app.element("#graph-select").disabled, false);
   assert.equal(app.element("#state-count").textContent, "3");
   assert.match(app.element("#result").textContent, /no strategy graph was generated/);
+});
+
+test("run times use checker measurements and follow result validity", async () => {
+  const app = createApp();
+  app.editor.type("Agent A:\ninit q0");
+  app.graph.layoutDelay = 25;
+  await app.element("#generate").emit("click");
+  assert.equal(app.element("#generation-time").textContent, "0.123 s");
+  assert.equal(app.element("#verification-time").textContent, "—");
+
+  app.responseData.checker_seconds = 2.3456;
+  await app.element("#verify").emit("click");
+  assert.equal(app.element("#generation-time").textContent, "0.123 s");
+  assert.equal(app.element("#verification-time").textContent, "2.346 s");
+  assert.match(app.element("#verification-time-label").textContent, /includes generation/);
+
+  app.element("#graph-select").value = "local";
+  await app.element("#graph-select").emit("change");
+  assert.equal(app.element("#generation-time").textContent, "0.123 s");
+  assert.equal(app.element("#verification-time").textContent, "2.346 s");
+  await app.element("#formula").emit("input");
+  assert.equal(app.element("#verification-time").textContent, "—");
+  assert.equal(app.element("#generation-time").textContent, "0.123 s");
+  app.element("#on-the-fly").checked = true;
+  await app.element("#on-the-fly").emit("change");
+  app.responseData.checker_seconds = 0.0004;
+  await app.element("#verify").emit("click");
+  assert.equal(app.element("#verification-time").textContent, "< 0.001 s");
+  assert.match(app.element("#verification-time-label").textContent, /on-the-fly/);
+  app.element("#epsilon").checked = true;
+  await app.element("#epsilon").emit("change");
+  assert.equal(app.element("#generation-time").textContent, "—");
+  assert.equal(app.element("#verification-time").textContent, "—");
+  app.responseData.checker_seconds = 1;
+  await app.element("#generate").emit("click");
+  app.editor.type("Agent A:\ninit q1");
+  assert.equal(app.element("#generation-time").textContent, "—");
+  assert.equal(app.element("#verification-time").textContent, "—");
+});
+
+test("invalid checker timing is reported rather than displayed", async () => {
+  const app = createApp();
+  app.editor.type("Agent A:\ninit q0");
+  for (const timing of [undefined, -1, Infinity, "1"]) {
+    app.responseData.checker_seconds = timing;
+    await app.element("#generate").emit("click");
+    assert.match(app.element("#error").textContent, /valid run time/);
+    assert.equal(app.element("#generation-time").textContent, "—");
+  }
 });
 
 test("statistics follow the selected model and clear when its specification changes", async () => {

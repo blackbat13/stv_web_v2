@@ -51,6 +51,14 @@
       </fieldset>
       <button id="verify" class="button secondary" disabled><span class="verify-icon">◇</span> Verify formula</button>
       <div id="result" class="result" role="status" hidden></div>
+      <section class="run-times" aria-label="Model checker run times">
+        <strong>Model checker run times</strong>
+        <dl>
+          <div><dt>Last generation run</dt><dd id="generation-time">—</dd></div>
+          <div><dt id="verification-time-label">Last verification run</dt><dd id="verification-time">—</dd></div>
+        </dl>
+        <p>STV process wall time; excludes graph parsing and display. Normal verification includes model generation.</p>
+      </section>
       <button id="show-natural-strategy" class="button secondary output-button" type="button" hidden>View natural strategy</button>
       <button id="show-counterexample" class="button secondary output-button" type="button" hidden>View counterexample</button>
       <div id="checker-warnings" class="checker-warnings" role="status" hidden></div>
