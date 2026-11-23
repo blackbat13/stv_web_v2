@@ -10,6 +10,7 @@ const source = fs.readFileSync(path.join(root, "static", "app.js"), "utf8");
 function createApp() {
   const elements = new Map();
   const requests = [];
+  const layouts = [];
   function element(selector) {
     if (!elements.has(selector)) {
       elements.set(selector, {
@@ -28,7 +29,18 @@ function createApp() {
   const graph = {
     on() {},
     destroy() {},
-    layout(options) { return { run() { options.stop(); } }; },
+    collection() { return { ids: [], merge(nodes) { this.ids.push(...nodes); } }; },
+    elements() {
+      return { components() { return [
+        { nodes() { return { roots() { return []; }, first() { return ["cyclic"]; } }; } },
+        { nodes() { return { roots() { return ["root"]; }, first() { return ["unused"]; } }; } },
+      ]; } };
+    },
+    layout(options) {
+      layouts.push({ options, busy: element("#layout-select").disabled });
+      if (this.failLayout) throw new Error("layout failed");
+      return { run() { options.stop(); } };
+    },
   };
   const editor = {
     value: "",
@@ -46,6 +58,7 @@ function createApp() {
     document: { querySelector: element },
     Option: function (text, value) { this.text = text; this.value = value; },
     Blob, FormData, TextDecoder, TypeError,
+    requestAnimationFrame(callback) { callback(); },
     CodeMirror: { fromTextArea() { return editor; } },
     cytoscape() { return graph; },
     async fetch(_url, options) {
@@ -59,14 +72,18 @@ function createApp() {
         async json() {
           return {
             formula: "<<A>><>(x == 1)", result: true,
-            graphs: [{ id: "global", name: "Global model", kind: "global", nodes: [], edges: [] }],
+            graphs: [
+              { id: "global", name: "Global model", kind: "global", nodes: [], edges: [] },
+              { id: "local", name: "Agent", kind: "local", nodes: [], edges: [] },
+            ],
           };
         },
       };
     },
   };
+  element("#layout-select").value = "cose";
   vm.runInNewContext(source, context);
-  return { element, requests, editor };
+  return { element, requests, editor, layouts, graph };
 }
 
 test("loaded file edits are used for generation and verification", async () => {
@@ -119,4 +136,37 @@ test("invalid UTF-8 input does not replace the current specification", async () 
   await app.element("#model-file").emit("change");
   assert.equal(app.editor.getValue(), "Existing text");
   assert.match(app.element("#error").textContent, /UTF-8/);
+});
+
+test("selected layout is applied, reapplied and preserved across model switches", async () => {
+  const app = createApp();
+  app.editor.type("Agent A:\ninit q0");
+  await app.element("#generate").emit("click");
+  assert.equal(app.layouts[0].options.name, "cose");
+
+  app.element("#layout-select").value = "breadthfirst";
+  await app.element("#layout-select").emit("change");
+  assert.equal(app.layouts[1].options.name, "breadthfirst");
+  assert.equal(app.layouts[1].options.directed, true);
+  assert.deepEqual(app.layouts[1].options.roots.ids, ["cyclic", "root"]);
+  assert.equal(app.layouts[1].busy, true);
+  assert.equal(app.element("#layout-select").disabled, false);
+  await app.element("#layout").emit("click");
+  assert.equal(app.layouts[2].options.name, "breadthfirst");
+
+  for (const name of ["circle", "grid"]) {
+    app.element("#layout-select").value = name;
+    await app.element("#layout-select").emit("change");
+    assert.equal(app.layouts.at(-1).options.name, name);
+  }
+  app.element("#graph-select").value = "local";
+  await app.element("#graph-select").emit("change");
+  assert.equal(app.layouts.at(-1).options.name, "grid");
+  assert.equal(app.requests.length, 1);
+
+  app.graph.failLayout = true;
+  await app.element("#layout").emit("click");
+  assert.match(app.element("#error").textContent, /Could not arrange model: layout failed/);
+  assert.equal(app.element("#layout-select").disabled, false);
+  assert.equal(app.element("#loading").hidden, true);
 });

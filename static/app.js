@@ -2,6 +2,7 @@ const fileInput = document.querySelector("#model-file");
 const generateButton = document.querySelector("#generate");
 const verifyButton = document.querySelector("#verify");
 const select = document.querySelector("#graph-select");
+const layoutSelect = document.querySelector("#layout-select");
 const layoutButton = document.querySelector("#layout");
 const fitButton = document.querySelector("#fit");
 const resultBox = document.querySelector("#result");
@@ -40,6 +41,7 @@ function setBusy(busy) {
   generateButton.disabled = busy || !specificationEditor.getValue().trim();
   verifyButton.disabled = busy || !generated || !formulaInput.value.trim();
   select.disabled = busy || !graphs.length;
+  layoutSelect.disabled = busy || !cy;
   layoutButton.disabled = busy || !cy;
   fitButton.disabled = busy || !cy;
   document.querySelector("#loading").hidden = !busy;
@@ -66,18 +68,21 @@ function reset() {
 
 function runLayout(animate = false) {
   if (!cy) return Promise.resolve();
+  const name = layoutSelect.value;
+  const options = { name, fit: true, padding: 55, animate: name === "cose" && animate };
+  if (name === "cose") {
+    Object.assign(options, { randomize: true, nodeRepulsion: 4000, idealEdgeLength: 80, numIter: 1000 });
+  } else if (name === "breadthfirst") {
+    const roots = cy.collection();
+    cy.elements().components().forEach(component => {
+      const nodes = component.nodes();
+      const candidates = nodes.roots();
+      roots.merge(candidates.length ? candidates : nodes.first());
+    });
+    Object.assign(options, { directed: true, roots });
+  }
   return new Promise(resolve => {
-    cy.layout({
-      name: "cose",
-      animate,
-      randomize: true,
-      fit: true,
-      padding: 55,
-      nodeRepulsion: 4000,
-      idealEdgeLength: 80,
-      numIter: 1000,
-      stop: resolve
-    }).run();
+    cy.layout({ ...options, stop: resolve }).run();
   });
 }
 
@@ -225,19 +230,22 @@ formulaInput.addEventListener("input", () => {
 });
 generateButton.addEventListener("click", () => submit("generate"));
 verifyButton.addEventListener("click", () => submit("verify"));
-select.addEventListener("change", async () => {
+async function showLoading(title, errorPrefix, action) {
   showError("");
-  document.querySelector("#loading-title").textContent = "Loading model";
+  document.querySelector("#loading-title").textContent = title;
   setBusy(true);
   try {
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    await displayGraph(true);
+    await action();
   } catch (error) {
-    showError(`Could not load model: ${error.message}`);
+    showError(`${errorPrefix}: ${error.message}`);
   } finally {
     document.querySelector("#loading-title").textContent = "Working on your model";
     setBusy(false);
   }
-});
-layoutButton.addEventListener("click", () => runLayout());
+}
+
+select.addEventListener("change", () => showLoading("Loading model", "Could not load model", () => displayGraph(true)));
+layoutSelect.addEventListener("change", () => showLoading("Arranging model", "Could not arrange model", () => runLayout(true)));
+layoutButton.addEventListener("click", () => showLoading("Arranging model", "Could not arrange model", () => runLayout(true)));
 fitButton.addEventListener("click", () => cy && cy.fit(undefined, 55));

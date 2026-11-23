@@ -5,7 +5,9 @@ STV v2. Load a specification from a file or write or paste it in the
 specification editor, generate the models, then view or edit the
 formula before verifying it. The checker marks strategy transitions in red in the
 global model when verification succeeds; blue transitions are shared actions.
-Drag states, zoom, fit or rearrange the graph, and click an element for details.
+Choose between force-directed, layered, circle and grid layouts. The selected
+layout is used when switching models and can be reapplied with the rearrange
+button. Drag states, zoom, fit the graph, and click an element for details.
 
 ## Run on Linux
 

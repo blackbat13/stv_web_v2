@@ -55,7 +55,16 @@
       <div class="graph-card">
         <div class="graph-toolbar">
           <div class="selector-wrap"><span class="selector-icon">◈</span><label for="graph-select" class="sr-only">Select model</label><select id="graph-select" disabled><option>No model generated</option></select></div>
-          <div class="toolbar-right"><span id="counts">— states &nbsp; / &nbsp; — transitions</span><span class="divider"></span><button id="layout" class="tool-button" title="Rearrange graph" aria-label="Rearrange graph" disabled>⟳</button><button id="fit" class="tool-button" title="Fit graph" aria-label="Fit graph" disabled>⊡</button></div>
+          <div class="toolbar-right">
+            <span id="counts">— states &nbsp; / &nbsp; — transitions</span>
+            <div class="layout-picker"><label for="layout-select">Layout</label><select id="layout-select" disabled>
+              <option value="cose">Force-directed</option>
+              <option value="breadthfirst">Layered</option>
+              <option value="circle">Circle</option>
+              <option value="grid">Grid</option>
+            </select></div>
+            <span class="divider"></span><button id="layout" class="tool-button" title="Reapply selected layout" aria-label="Reapply selected layout" disabled>⟳</button><button id="fit" class="tool-button" title="Fit graph" aria-label="Fit graph" disabled>⊡</button>
+          </div>
         </div>
         <div class="canvas-wrap">
           <div id="graph" aria-label="Interactive model graph"></div>
