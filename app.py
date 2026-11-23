@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent
 CHECKER = ROOT / "model_checkers" / "stv_v2" / "stv"
 MAX_INPUT_SIZE = 2 * 1024 * 1024
 MAX_DOT_SIZE = 25 * 1024 * 1024
+MAX_FORMULA_SIZE = 32 * 1024
 TIMEOUT_SECONDS = 120
 
 app = Flask(__name__)
@@ -73,17 +74,29 @@ def parse_graph(path, name, kind):
     return {"id": path.name, "name": name, "kind": kind, "nodes": nodes, "edges": edges}
 
 
-def run_checker(content, verify):
+def extract_formula(specification):
+    match = re.search(
+        r"^[ \t]*FORMULA[ \t]*:[ \t]*(.*?)(?=^[ \t]*Agent[ \t]+[^\r\n:]+[ \t]*:|\Z)",
+        specification,
+        re.MULTILINE | re.DOTALL,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def run_checker(content, verify, formula=None):
     executable = Path(os.environ.get("STV_CHECKER", str(CHECKER)))
     if not executable.is_file():
         raise ModelError(f"Model checker not found: {executable}")
     with tempfile.TemporaryDirectory(prefix="stv-web-") as directory:
         workdir = Path(directory)
         (workdir / "model.txt").write_bytes(content)
+        command = [str(executable.resolve()), "-f", "model.txt", "-m", "3" if verify else "1", "--OUTPUT_DOT_FILES"]
+        if verify and formula is not None:
+            command.extend(["--OVERWRITE_FORMULA", f"FORMULA: {formula}"])
         try:
             with tempfile.TemporaryFile(mode="w+b") as output:
                 completed = subprocess.run(
-                    [str(executable.resolve()), "-f", "model.txt", "-m", "3" if verify else "1", "--OUTPUT_DOT_FILES"],
+                    command,
                     cwd=workdir,
                     stdout=output,
                     stderr=subprocess.STDOUT,
@@ -145,14 +158,24 @@ def models():
     if not content or len(content) > MAX_INPUT_SIZE:
         return jsonify(error="The file must be non-empty and no larger than 2 MB."), 400
     try:
-        content.decode("utf-8")
+        specification = content.decode("utf-8")
     except UnicodeDecodeError:
         return jsonify(error="The model specification must be UTF-8 text."), 400
+    formula = request.form.get("formula") if action == "verify" else None
+    if formula is not None and (not formula.strip() or "\0" in formula or len(formula.encode("utf-8")) > MAX_FORMULA_SIZE):
+        return jsonify(error="The formula must be non-empty, contain no null bytes, and be no larger than 32 KB."), 400
     try:
-        return jsonify(run_checker(content, action == "verify"))
+        result = run_checker(content, action == "verify", formula)
+        if action == "generate":
+            result["formula"] = extract_formula(specification)
+        return jsonify(result)
     except ModelError as exc:
         app.logger.warning("Model checker request failed: %s", exc)
-        return jsonify(error=str(exc)), 422
+        message = "\n".join(
+            line for line in str(exc).splitlines()
+            if line != "Warning: could not open the config file 'config.txt', using the defaults"
+        )
+        return jsonify(error=message), 422
 
 
 @app.errorhandler(RequestEntityTooLarge)

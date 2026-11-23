@@ -32,7 +32,10 @@
       <button id="generate" class="button primary" disabled>Generate models <span>→</span></button>
 
       <div class="section-title verify-title"><span>VERIFICATION</span><span class="section-index">02</span></div>
-      <p class="helper">Check the formula defined in your specification and highlight the resulting strategy.</p>
+      <p class="helper">Edit the formula to check. Changes do not modify your specification file.</p>
+      <label class="field-label" for="formula">FORMULA TO VERIFY</label>
+      <textarea id="formula" rows="4" placeholder="Generate a model to load its formula" disabled aria-describedby="formula-help"></textarea>
+      <p id="formula-help" class="formula-help">Enter the expression without the FORMULA: prefix.</p>
       <button id="verify" class="button secondary" disabled><span class="verify-icon">◇</span> Verify formula</button>
       <div id="result" class="result" role="status" hidden></div>
       <div id="error" class="error" role="alert" hidden></div>

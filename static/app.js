@@ -7,6 +7,7 @@ const fitButton = document.querySelector("#fit");
 const resultBox = document.querySelector("#result");
 const errorBox = document.querySelector("#error");
 const details = document.querySelector("#details");
+const formulaInput = document.querySelector("#formula");
 let graphs = [];
 let generated = false;
 let cy = null;
@@ -18,8 +19,9 @@ function showError(message) {
 
 function setBusy(busy) {
   fileInput.disabled = busy;
+  formulaInput.disabled = busy || !generated;
   generateButton.disabled = busy || !fileInput.files.length;
-  verifyButton.disabled = busy || !generated;
+  verifyButton.disabled = busy || !generated || !formulaInput.value.trim();
   select.disabled = busy || !graphs.length;
   layoutButton.disabled = busy || !cy;
   fitButton.disabled = busy || !cy;
@@ -29,6 +31,7 @@ function setBusy(busy) {
 function reset() {
   graphs = [];
   generated = false;
+  formulaInput.value = "";
   if (cy) cy.destroy();
   cy = null;
   select.replaceChildren(new Option("No model generated", ""));
@@ -114,11 +117,13 @@ async function submit(action) {
   const body = new FormData();
   body.append("file", fileInput.files[0]);
   body.append("action", action);
+  if (action === "verify") body.append("formula", formulaInput.value);
   try {
     const response = await fetch("/api/models", { method: "POST", body });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "The request failed.");
     const previous = select.value;
+    if (action === "generate" && !generated) formulaInput.value = data.formula;
     graphs = data.graphs;
     generated = true;
     select.replaceChildren(...graphs.map(graph => new Option(graph.kind === "global" ? "Global model" : `${graph.name} · Local model`, graph.id)));
@@ -139,6 +144,18 @@ async function submit(action) {
 fileInput.addEventListener("change", () => {
   document.querySelector("#file-label").textContent = fileInput.files[0]?.name || "Choose a model file";
   reset();
+});
+formulaInput.addEventListener("input", () => {
+  resultBox.hidden = true;
+  showError("");
+  for (const graph of graphs) {
+    for (const edge of graph.edges) {
+      if (edge.data.kind === "strategy") edge.data.kind = "normal";
+    }
+  }
+  if (cy) cy.edges('[kind = "strategy"]').data("kind", "normal");
+  details.textContent = "Select an element in the graph to see its details.";
+  setBusy(false);
 });
 generateButton.addEventListener("click", () => submit("generate"));
 verifyButton.addEventListener("click", () => submit("verify"));
