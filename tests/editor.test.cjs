@@ -16,6 +16,7 @@ function createApp(requestAnimationFrame = callback => callback()) {
     { id: "local", name: "Agent", kind: "local", nodes: [{ data: { id: "a" } }, { data: { id: "b" } }], edges: [{ data: { source: "a", target: "b" } }, { data: { source: "a", target: "b" } }] },
     { id: "local-2", name: "Other", kind: "local", nodes: [{ data: { id: "a" } }], edges: [] },
   ];
+  const responseData = { formula: "<<A>><>(x == 1)", result: true, graphs: responseGraphs };
   function element(selector) {
     if (!elements.has(selector)) {
       elements.set(selector, {
@@ -27,7 +28,7 @@ function createApp(requestAnimationFrame = callback => callback()) {
         async emit(type) { return this.listeners[type](); },
         replaceChildren(...options) { this.value = options[0]?.value || ""; },
         showModal() { this.open = true; },
-        close() { this.open = false; },
+        close() { this.open = false; if (this.listeners.close) this.listeners.close(); },
         focus() {},
       });
     }
@@ -36,6 +37,7 @@ function createApp(requestAnimationFrame = callback => callback()) {
   const graph = {
     on() {},
     destroy() {},
+    edges() { return { data() {} }; },
     collection() { return { ids: [], merge(nodes) { this.ids.push(...nodes); } }; },
     elements() {
       return { components() { return [
@@ -73,21 +75,22 @@ function createApp(requestAnimationFrame = callback => callback()) {
         specification: await options.body.get("file").text(),
         action: options.body.get("action"),
         formula: options.body.get("formula"),
+        epsilon: options.body.get("epsilon"),
+        onTheFly: options.body.get("on_the_fly"),
+        counterexample: options.body.get("counterexample"),
+        naturalStrategy: options.body.get("natural_strategy"),
       });
       return {
         ok: true,
         async json() {
-          return {
-            formula: "<<A>><>(x == 1)", result: true,
-            graphs: responseGraphs,
-          };
+          return responseData;
         },
       };
     },
   };
   element("#layout-select").value = "cose";
   vm.runInNewContext(source, context);
-  return { element, requests, editor, layouts, graph, responseGraphs, context };
+  return { element, requests, editor, layouts, graph, responseGraphs, responseData, context };
 }
 
 test("loaded file edits are used for generation and verification", async () => {
@@ -140,6 +143,111 @@ test("invalid UTF-8 input does not replace the current specification", async () 
   await app.element("#model-file").emit("change");
   assert.equal(app.editor.getValue(), "Existing text");
   assert.match(app.element("#error").textContent, /UTF-8/);
+});
+
+test("the formula is loaded from specifications before or after agents", () => {
+  const { extractFormula } = createApp().context;
+  assert.equal(extractFormula("FORMULA: <<A>><>\r\n(x == 1)\r\nAgent A:\r\ninit q0"), "<<A>><>\r\n(x == 1)");
+  assert.equal(extractFormula("Agent A:\ninit q0\nFORMULA: <<A>><>(x == 1)"), "<<A>><>(x == 1)");
+  assert.equal(extractFormula("Agent A:\ninit q0"), "");
+});
+
+test("on-the-fly verification works without generating models and uses the editable formula", async () => {
+  const app = createApp();
+  const text = "FORMULA: <<A>><>\n(x == 1)\n\nAgent A:\ninit q0";
+  await app.element("#open-editor").emit("click");
+  app.editor.type(text);
+  await app.element("#done-editing").emit("click");
+  assert.equal(app.element("#formula").value, "<<A>><>\n(x == 1)");
+  assert.equal(app.element("#verify").disabled, false);
+  app.element("#on-the-fly").checked = true;
+  await app.element("#on-the-fly").emit("change");
+  assert.equal(app.element("#natural-strategy").disabled, true);
+  assert.equal(app.element("#verify").disabled, false);
+  app.element("#formula").value = "<<A>><>(x == 2)";
+  app.element("#counterexample").checked = true;
+  app.responseData.result = false;
+  app.responseData.graphs = [];
+  app.responseData.counterexample = "States:\nq0\nDecisions:\ngo";
+  app.responseData.warnings = ["Warning: deadlock"];
+  await app.element("#verify").emit("click");
+  assert.deepEqual(app.requests[0], {
+    specification: text, action: "verify", formula: "<<A>><>(x == 2)",
+    epsilon: "0", onTheFly: "1", counterexample: "1", naturalStrategy: "0",
+  });
+  assert.equal(app.element("#graph-select").disabled, true);
+  assert.match(app.element("#result").textContent, /FALSE/);
+  assert.equal(app.element("#show-counterexample").hidden, false);
+  assert.equal(app.element("#checker-warnings").textContent, "Warning: deadlock");
+  assert.equal(app.element("#checker-warnings").hidden, false);
+  assert.equal(app.element("#output-title").textContent, "Counterexample");
+  assert.match(app.element("#output-content").textContent, /States:/);
+  assert.equal(app.element("#output-dialog").open, true);
+  await app.element("#done-output").emit("click");
+  await app.element("#show-counterexample").emit("click");
+  assert.equal(app.element("#output-dialog").open, true);
+});
+
+test("natural strategy verification can generate models directly", async () => {
+  const app = createApp();
+  app.editor.type("FORMULA: <<A>><>(x == 1)\nAgent A:\ninit q0");
+  await app.element("#done-editing").emit("click");
+  app.element("#natural-strategy").checked = true;
+  await app.element("#natural-strategy").emit("change");
+  app.responseData.natural_strategy = "x == 0 --> go\nComplexity after reduction: 1";
+  await app.element("#verify").emit("click");
+  assert.equal(app.requests[0].action, "verify");
+  assert.equal(app.requests[0].naturalStrategy, "1");
+  assert.equal(app.element("#graph-select").disabled, false);
+  assert.match(app.element("#output-content").textContent, /x == 0 --> go/);
+});
+
+test("verification output dialogs and epsilon changes invalidate stale results", async () => {
+  const app = createApp();
+  app.editor.type("Agent A:\ninit q0");
+  await app.element("#generate").emit("click");
+  app.element("#natural-strategy").checked = true;
+  await app.element("#natural-strategy").emit("change");
+  assert.equal(app.element("#on-the-fly").disabled, true);
+  app.element("#counterexample").checked = true;
+  app.responseData.result = false;
+  app.responseData.natural_strategy = "No natural strategy present.";
+  app.responseData.counterexample = "States:\nq0";
+  await app.element("#verify").emit("click");
+  assert.equal(app.requests[1].naturalStrategy, "1");
+  assert.equal(app.requests[1].counterexample, "1");
+  assert.equal(app.element("#output-title").textContent, "Natural strategy");
+  assert.equal(app.element("#output-content").textContent, "No natural strategy present.");
+  assert.equal(app.element("#output-dialog").open, true);
+  await app.element("#done-output").emit("click");
+  await app.element("#show-counterexample").emit("click");
+  assert.equal(app.element("#output-title").textContent, "Counterexample");
+  app.element("#formula").value = "modified formula";
+  await app.element("#formula").emit("input");
+  assert.equal(app.element("#output-dialog").open, false);
+  assert.equal(app.element("#show-natural-strategy").hidden, true);
+  assert.equal(app.element("#show-counterexample").hidden, true);
+  app.element("#epsilon").checked = true;
+  await app.element("#epsilon").emit("change");
+  assert.equal(app.element("#formula").value, "modified formula");
+  assert.equal(app.element("#graph-select").disabled, true);
+  await app.element("#generate").emit("click");
+  assert.equal(app.requests[2].epsilon, "1");
+});
+
+test("on-the-fly verification preserves an existing graph without stale strategy markings", async () => {
+  const app = createApp();
+  app.editor.type("Agent A:\ninit q0");
+  await app.element("#generate").emit("click");
+  app.responseGraphs[0].edges[0].data.kind = "strategy";
+  app.element("#on-the-fly").checked = true;
+  await app.element("#on-the-fly").emit("change");
+  assert.equal(app.responseGraphs[0].edges[0].data.kind, "normal");
+  app.responseData.graphs = [];
+  await app.element("#verify").emit("click");
+  assert.equal(app.element("#graph-select").disabled, false);
+  assert.equal(app.element("#state-count").textContent, "3");
+  assert.match(app.element("#result").textContent, /no strategy graph was generated/);
 });
 
 test("statistics follow the selected model and clear when its specification changes", async () => {

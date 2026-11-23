@@ -7,8 +7,16 @@ const layoutButton = document.querySelector("#layout");
 const fitButton = document.querySelector("#fit");
 const resultBox = document.querySelector("#result");
 const errorBox = document.querySelector("#error");
+const warningsBox = document.querySelector("#checker-warnings");
 const details = document.querySelector("#details");
 const formulaInput = document.querySelector("#formula");
+const epsilonOption = document.querySelector("#epsilon");
+const onTheFlyOption = document.querySelector("#on-the-fly");
+const counterexampleOption = document.querySelector("#counterexample");
+const naturalStrategyOption = document.querySelector("#natural-strategy");
+const naturalStrategyButton = document.querySelector("#show-natural-strategy");
+const counterexampleButton = document.querySelector("#show-counterexample");
+const outputDialog = document.querySelector("#output-dialog");
 const specificationEditor = CodeMirror.fromTextArea(document.querySelector("#specification"), {
   mode: "stv",
   lineNumbers: true,
@@ -27,10 +35,13 @@ const MAX_LOOP_ADJUSTMENT_EDGES = 1500;
 const MAX_LOOP_INCIDENT_SAMPLES = 100;
 let sourceName = "";
 let loadingSpecification = false;
+let specificationChanged = false;
 let graphs = [];
 let generated = false;
 let cy = null;
 let adjustLoops = null;
+let naturalStrategyText = "";
+let counterexampleText = "";
 
 function showError(message) {
   errorBox.textContent = message;
@@ -38,12 +49,17 @@ function showError(message) {
 }
 
 function setBusy(busy) {
+  const hasSpecification = !!specificationEditor.getValue().trim();
   fileInput.disabled = busy;
   openEditorButton.disabled = busy;
   specificationEditor.setOption("readOnly", busy);
-  formulaInput.disabled = busy || !generated;
-  generateButton.disabled = busy || !specificationEditor.getValue().trim();
-  verifyButton.disabled = busy || !generated || !formulaInput.value.trim();
+  formulaInput.disabled = busy || !hasSpecification;
+  generateButton.disabled = busy || !hasSpecification;
+  verifyButton.disabled = busy || !hasSpecification || !formulaInput.value.trim();
+  epsilonOption.disabled = busy;
+  onTheFlyOption.disabled = busy || naturalStrategyOption.checked;
+  counterexampleOption.disabled = busy;
+  naturalStrategyOption.disabled = busy || onTheFlyOption.checked;
   select.disabled = busy || !graphs.length;
   layoutSelect.disabled = busy || !cy;
   layoutButton.disabled = busy || !cy;
@@ -51,10 +67,28 @@ function setBusy(busy) {
   document.querySelector("#loading").hidden = !busy;
 }
 
-function reset() {
+function clearVerification() {
+  resultBox.hidden = true;
+  naturalStrategyText = "";
+  counterexampleText = "";
+  naturalStrategyButton.hidden = true;
+  counterexampleButton.hidden = true;
+  warningsBox.hidden = true;
+  warningsBox.textContent = "";
+  if (outputDialog.open) outputDialog.close();
+  for (const graph of graphs) {
+    for (const edge of graph.edges) {
+      if (edge.data.kind === "strategy") edge.data.kind = "normal";
+    }
+  }
+  if (cy) cy.edges('[kind = "strategy"]').data("kind", "normal");
+}
+
+function reset(keepFormula = false) {
+  clearVerification();
   graphs = [];
   generated = false;
-  formulaInput.value = "";
+  if (!keepFormula) formulaInput.value = "";
   if (cy) cy.destroy();
   cy = null;
   adjustLoops = null;
@@ -68,9 +102,19 @@ function reset() {
   document.querySelector("#graph-subtitle").textContent = "A clearer view of your system's state space.";
   document.querySelector("#breadcrumb").textContent = "OVERVIEW";
   details.textContent = "Select an element in the graph to see its details.";
-  resultBox.hidden = true;
   showError("");
   setBusy(false);
+}
+
+function extractFormula(specification) {
+  const match = specification.match(/^[ \t]*FORMULA[ \t]*:[ \t]*([\s\S]*?)(?=^[ \t]*Agent[ \t]+[^\r\n:]+[ \t]*:|(?![\s\S]))/m);
+  return match ? match[1].trim() : "";
+}
+
+function showOutput(title, text) {
+  document.querySelector("#output-title").textContent = title;
+  document.querySelector("#output-content").textContent = text;
+  outputDialog.showModal();
 }
 
 function loopLabelMargins(direction) {
@@ -280,27 +324,50 @@ async function submit(action) {
     showError("The specification must be no larger than 2 MB.");
     return;
   }
+  clearVerification();
   setBusy(true);
+  const onTheFly = action === "verify" && onTheFlyOption.checked;
   const body = new FormData();
   body.append("file", specification, "model.txt");
   body.append("action", action);
-  if (action === "verify") body.append("formula", formulaInput.value);
+  body.append("epsilon", epsilonOption.checked ? "1" : "0");
+  if (action === "verify") {
+    body.append("formula", formulaInput.value);
+    body.append("on_the_fly", onTheFly ? "1" : "0");
+    body.append("counterexample", counterexampleOption.checked ? "1" : "0");
+    body.append("natural_strategy", naturalStrategyOption.checked ? "1" : "0");
+  }
   try {
     const response = await fetch("/api/models", { method: "POST", body });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "The request failed.");
-    const previous = select.value;
-    if (action === "generate" && !generated) formulaInput.value = data.formula;
-    graphs = data.graphs;
-    generated = true;
-    select.replaceChildren(...graphs.map(graph => new Option(graph.kind === "global" ? "Global model" : `${graph.name} · Local model`, graph.id)));
-    if (graphs.some(graph => graph.id === previous)) select.value = previous;
+    warningsBox.textContent = (data.warnings || []).join("\n");
+    warningsBox.hidden = !warningsBox.textContent;
+    if (!onTheFly) {
+      const previous = select.value;
+      if (action === "generate" && !generated && !formulaInput.value.trim()) formulaInput.value = data.formula;
+      graphs = data.graphs;
+      generated = true;
+      select.replaceChildren(...graphs.map(graph => new Option(graph.kind === "global" ? "Global model" : `${graph.name} · Local model`, graph.id)));
+      if (graphs.some(graph => graph.id === previous)) select.value = previous;
+      await displayGraph();
+    }
     resultBox.hidden = action !== "verify";
     if (action === "verify") {
       resultBox.className = `result ${data.result ? "success" : "negative"}`;
-      resultBox.textContent = data.result ? "TRUE · Strategy found. Red transitions mark the strategy in the global model." : "FALSE · No strategy found for this formula.";
+      resultBox.textContent = data.result
+        ? onTheFly ? "TRUE · Verified on the fly; no strategy graph was generated." : "TRUE · Strategy found. Red transitions mark the strategy in the global model."
+        : "FALSE · No strategy found for this formula.";
+      if (!data.result && counterexampleOption.checked && !data.counterexample) {
+        resultBox.textContent += " STV did not report a counterexample.";
+      }
+      naturalStrategyText = data.natural_strategy || "";
+      counterexampleText = data.counterexample || "";
+      naturalStrategyButton.hidden = !naturalStrategyText;
+      counterexampleButton.hidden = !counterexampleText;
+      if (naturalStrategyText) showOutput("Natural strategy", naturalStrategyText);
+      else if (counterexampleText) showOutput("Counterexample", counterexampleText);
     }
-    await displayGraph();
   } catch (error) {
     showError(error.message || "Could not reach the server.");
   } finally {
@@ -325,7 +392,9 @@ fileInput.addEventListener("change", async () => {
     sourceName = file.name;
     document.querySelector("#file-label").textContent = file.name;
     modelSource.textContent = `Loaded from ${file.name}. The original file will not be changed.`;
+    specificationChanged = false;
     reset();
+    formulaInput.value = extractFormula(text);
   } catch (error) {
     showError(error instanceof TypeError ? "The specification file must be UTF-8 text." : `Could not load file: ${error.message}`);
   } finally {
@@ -340,10 +409,20 @@ openEditorButton.addEventListener("click", () => {
 });
 document.querySelector("#close-editor").addEventListener("click", () => editorDialog.close());
 document.querySelector("#done-editing").addEventListener("click", () => editorDialog.close());
+editorDialog.addEventListener("close", () => {
+  if (specificationChanged) {
+    formulaInput.value = extractFormula(specificationEditor.getValue());
+    specificationChanged = false;
+  }
+  setBusy(false);
+});
 specificationEditor.on("change", () => {
   if (loadingSpecification) return;
+  specificationChanged = true;
   if (generated || graphs.length) reset();
   else {
+    clearVerification();
+    formulaInput.value = "";
     showError("");
     setBusy(false);
   }
@@ -352,17 +431,23 @@ specificationEditor.on("change", () => {
     : "Specification written in the editor. Changes last until the page is reloaded.";
 });
 formulaInput.addEventListener("input", () => {
-  resultBox.hidden = true;
+  clearVerification();
   showError("");
-  for (const graph of graphs) {
-    for (const edge of graph.edges) {
-      if (edge.data.kind === "strategy") edge.data.kind = "normal";
-    }
-  }
-  if (cy) cy.edges('[kind = "strategy"]').data("kind", "normal");
   details.textContent = "Select an element in the graph to see its details.";
   setBusy(false);
 });
+epsilonOption.addEventListener("change", () => reset(true));
+for (const option of [onTheFlyOption, counterexampleOption, naturalStrategyOption]) {
+  option.addEventListener("change", () => {
+    clearVerification();
+    showError("");
+    setBusy(false);
+  });
+}
+naturalStrategyButton.addEventListener("click", () => showOutput("Natural strategy", naturalStrategyText));
+counterexampleButton.addEventListener("click", () => showOutput("Counterexample", counterexampleText));
+document.querySelector("#close-output").addEventListener("click", () => outputDialog.close());
+document.querySelector("#done-output").addEventListener("click", () => outputDialog.close());
 generateButton.addEventListener("click", () => submit("generate"));
 verifyButton.addEventListener("click", () => submit("verify"));
 async function showLoading(title, errorPrefix, action) {

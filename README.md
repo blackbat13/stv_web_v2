@@ -2,8 +2,9 @@
 
 A Flask interface for generating and exploring global and agent-local models with
 STV v2. Load a specification from a file or write or paste it in the
-specification editor, generate the models, then view or edit the
-formula before verifying it. The checker marks strategy transitions in red in the
+specification editor, then view or edit the formula before verifying it.
+Generate models to explore them, or select on-the-fly verification to verify
+without generating a global model first. The checker marks strategy transitions in red in the
 global model when verification succeeds; blue transitions are shared actions.
 Choose between force-directed, layered, circle and grid layouts. The selected
 layout is used when switching models and can be reapplied with the rearrange
@@ -38,11 +39,26 @@ The editor highlights STV v2 scanner tokens, including section headers,
 keywords, comments, numbers, and operators. Highlighting is not syntax
 validation; STV reports errors when the model is generated or verified.
 Each run uses an isolated temporary directory which is deleted afterwards.
-Verification regenerates the models using the current specification and the
-formula in the formula editor, passed to STV as an override. Enter only the
-expression, without the `FORMULA:` prefix. Editing a verified formula clears the
-previous result and strategy highlight until the new formula is verified. The
-checker has a 120-second timeout and specifications are limited to 2 MB; graph
+Normal verification generates or regenerates the models using the current
+specification and the formula in the formula editor, passed to STV as an override. On-the-fly
+verification (`-m 2`) does not request graph files or produce a highlighted
+strategy; any previously displayed graph remains available without its old
+strategy highlighting. Enter only the expression, without the `FORMULA:`
+prefix. Editing a verified formula clears the previous result and strategy
+highlight until the new formula is verified.
+
+Select **Add epsilon transitions** before generating or verifying to pass
+`--ADD_EPSILON_TRANSITIONS`; changing it clears previously generated models.
+Select **Generate a counterexample on failure** to show the checker's reported
+path when available. **Generate a natural strategy** displays STV's strategy and
+complexity output in a separate window. Natural strategy generation requires
+the full global model: STV builds it even with `-m 2`, so this option cannot be
+combined with on-the-fly verification. On failure, STV reports that no natural
+strategy is present.
+
+Checker warnings, including deadlock warnings, appear alongside results. Checker
+output is limited to 2 MB and the checker has a 120-second timeout. Specifications
+are limited to 2 MB; graph
 files are limited to 25 MB each. Transition labels are hidden on graphs with
 more than 100 transitions, but remain available by selecting a transition.
 Self-loop labels are placed outside the loop.

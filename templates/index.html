@@ -34,15 +34,26 @@
       <p id="model-source" class="formula-help" role="status">Load a file or write a specification in the editor.</p>
       <div class="field-label">MODEL CHECKER <span>AVAILABLE</span></div>
       <div class="checker"><span class="checker-icon">⌘</span><span><strong>STV v2</strong><small>Strategic Verifier</small></span><span class="check">✓</span></div>
+      <label class="option"><input id="epsilon" type="checkbox"><span>Add epsilon transitions</span></label>
       <button id="generate" class="button primary" disabled>Generate models <span>→</span></button>
 
       <div class="section-title verify-title"><span>VERIFICATION</span><span class="section-index">02</span></div>
       <p class="helper">Edit the formula to check. Changes do not modify your specification file.</p>
       <label class="field-label" for="formula">FORMULA TO VERIFY</label>
-      <textarea id="formula" rows="4" placeholder="Generate a model to load its formula" disabled aria-describedby="formula-help"></textarea>
+      <textarea id="formula" rows="4" placeholder="Load or write a specification to edit its formula" disabled aria-describedby="formula-help"></textarea>
       <p id="formula-help" class="formula-help">Enter the expression without the FORMULA: prefix.</p>
+      <fieldset class="verification-options">
+        <legend>VERIFICATION OPTIONS</legend>
+        <label class="option"><input id="on-the-fly" type="checkbox"><span>Verify on the fly</span></label>
+        <label class="option"><input id="counterexample" type="checkbox"><span>Generate a counterexample on failure</span></label>
+        <label class="option"><input id="natural-strategy" type="checkbox"><span>Generate a natural strategy</span></label>
+        <p class="formula-help">Normal verification generates models. On-the-fly verification does not produce graphs. Natural strategies require the global model and cannot be combined with on-the-fly verification.</p>
+      </fieldset>
       <button id="verify" class="button secondary" disabled><span class="verify-icon">◇</span> Verify formula</button>
       <div id="result" class="result" role="status" hidden></div>
+      <button id="show-natural-strategy" class="button secondary output-button" type="button" hidden>View natural strategy</button>
+      <button id="show-counterexample" class="button secondary output-button" type="button" hidden>View counterexample</button>
+      <div id="checker-warnings" class="checker-warnings" role="status" hidden></div>
       <div id="error" class="error" role="alert" hidden></div>
       <div class="sidebar-foot"><span class="status-dot"></span> Ready for exploration <span>↗</span></div>
     </aside>
@@ -97,6 +108,14 @@
     <label class="sr-only" for="specification">Model specification</label>
     <textarea id="specification" spellcheck="false" wrap="off" placeholder="Write or paste your model specification here"></textarea>
     <div class="editor-footer"><span>UTF-8 TEXT · UP TO 2 MB</span><button id="done-editing" class="button primary" type="button">Done editing</button></div>
+  </dialog>
+  <dialog id="output-dialog" aria-labelledby="output-title">
+    <div class="editor-header">
+      <div><div class="eyebrow">VERIFICATION OUTPUT</div><h2 id="output-title"></h2></div>
+      <button id="close-output" class="tool-button editor-close" type="button" aria-label="Close verification output">×</button>
+    </div>
+    <pre id="output-content"></pre>
+    <div class="editor-footer"><button id="done-output" class="button primary" type="button">Close</button></div>
   </dialog>
 </body>
 </html>

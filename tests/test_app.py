@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import CHECKER, MAX_FORMULA_SIZE, MAX_INPUT_SIZE, ROOT, ModelError, app, extract_formula, run_checker
+from app import CHECKER, MAX_FORMULA_SIZE, MAX_INPUT_SIZE, MAX_OUTPUT_SIZE, ROOT, ModelError, app, extract_formula, run_checker
 
 
 SAMPLE = Path(__file__).resolve().parents[1] / "model_checkers" / "stv_v2" / "sample_input" / "Voters1Candidates2.txt"
@@ -15,10 +15,11 @@ class RequestTests(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
 
-    def upload(self, content, action="generate", formula=None):
+    def upload(self, content, action="generate", formula=None, **options):
         data = {"file": (io.BytesIO(content), "model.txt"), "action": action}
         if formula is not None:
             data["formula"] = formula
+        data.update(options)
         return self.client.post(
             "/api/models",
             data=data,
@@ -51,6 +52,38 @@ class RequestTests(unittest.TestCase):
             response = self.upload(b"model")
         self.assertEqual(response.status_code, 422)
         self.assertIn("timed out", response.json["error"])
+
+    def test_oversized_checker_output_is_not_silently_truncated(self):
+        def fake_run(command, **kwargs):
+            kwargs["stdout"].write(b"x" * (MAX_OUTPUT_SIZE + 1))
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch("app.subprocess.run", side_effect=fake_run):
+            response = self.upload(b"model", "verify", on_the_fly="1")
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("output exceeds", response.json["error"])
+
+    def test_option_validation_and_forwarding(self):
+        self.assertEqual(self.upload(b"model", "verify", on_the_fly="invalid").status_code, 400)
+        self.assertEqual(self.upload(b"model", "verify", on_the_fly="1", natural_strategy="1").status_code, 400)
+        self.assertEqual(self.upload(b"model", "generate", counterexample="1").status_code, 400)
+        with patch("app.run_checker", return_value={"graphs": [], "result": False}) as checker:
+            response = self.upload(b"model", "verify", formula="x", on_the_fly="1", epsilon="1", counterexample="1")
+        self.assertEqual(response.status_code, 200)
+        checker.assert_called_once_with(
+            b"model", True, "x", on_the_fly=True, epsilon=True, counterexample=True, natural_strategy=False
+        )
+
+    def test_warning_alone_is_not_a_counterexample(self):
+        def fake_run(command, **kwargs):
+            kwargs["stdout"].write(b"Verification result: FALSE\nWarning: deadlock\n")
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch("app.subprocess.run", side_effect=fake_run):
+            response = self.upload(b"model", "verify", on_the_fly="1", counterexample="1")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json["counterexample"])
+        self.assertEqual(response.json["warnings"], ["Warning: deadlock"])
 
     def test_only_expected_config_warning_is_hidden_from_response(self):
         warning = "Warning: could not open the config file 'config.txt', using the defaults"
@@ -125,6 +158,52 @@ class CheckerIntegrationTests(unittest.TestCase):
             response = client.post("/api/models", data={"file": (io.BytesIO(first), "model.txt"), "action": "generate"})
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json["formula"], formula.decode().strip())
+
+    def test_on_the_fly_verification_does_not_request_or_parse_dot_files(self):
+        with patch("app.subprocess.run", wraps=subprocess.run) as command, patch("app.parse_graph") as parse:
+            verified = run_checker(self.sample, True, on_the_fly=True)
+        args = command.call_args.args[0]
+        self.assertEqual(args[args.index("-m") + 1], "2")
+        self.assertNotIn("--OUTPUT_DOT_FILES", args)
+        parse.assert_not_called()
+        self.assertIs(verified["result"], True)
+        self.assertEqual(verified["graphs"], [])
+
+    def test_epsilon_transitions_change_generated_model(self):
+        deadlocks = self.sample.replace(b"idle: q3->q3", b"")
+        regular = run_checker(deadlocks, False)
+        epsilon = run_checker(deadlocks, False, epsilon=True)
+        self.assertGreater(len(epsilon["graphs"][0]["edges"]), len(regular["graphs"][0]["edges"]))
+        self.assertTrue(any("ɛ" in edge["data"]["label"] for edge in epsilon["graphs"][0]["edges"]))
+
+    def test_natural_strategy_and_counterexample_output(self):
+        formula = "<<Coercer1>><>((Voter1_vote == 99))"
+        natural = run_checker(self.sample, True, natural_strategy=True)
+        self.assertIs(natural["result"], True)
+        self.assertIn("-->", natural["natural_strategy"])
+        self.assertIn("Complexity after reduction:", natural["natural_strategy"])
+        failed = run_checker(self.sample, True, formula, counterexample=True, natural_strategy=True)
+        self.assertIs(failed["result"], False)
+        self.assertEqual(failed["natural_strategy"], "No natural strategy present.")
+        self.assertIn("States:", failed["counterexample"])
+        self.assertIn("Decisions:", failed["counterexample"])
+        self.assertNotIn("No natural strategy present.", failed["counterexample"])
+        on_the_fly = run_checker(self.sample, True, formula, on_the_fly=True, counterexample=True)
+        self.assertIs(on_the_fly["result"], False)
+        self.assertIn("States:", on_the_fly["counterexample"])
+        self.assertEqual(on_the_fly["graphs"], [])
+        with self.assertRaises(ModelError):
+            run_checker(self.sample, True, on_the_fly=True, natural_strategy=True)
+
+    def test_deadlock_warning_is_separate_from_verification_outputs(self):
+        deadlocks = self.sample.replace(b"idle: q3->q3", b"")
+        formula = "<<Coercer1>><>((Voter1_vote == 99))"
+        result = run_checker(deadlocks, True, formula, counterexample=True, natural_strategy=True)
+        self.assertIn("States:", result["counterexample"])
+        self.assertNotIn("Warning:", result["counterexample"])
+        self.assertEqual(result["natural_strategy"], "No natural strategy present.")
+        self.assertTrue(any("without outgoing transitions" in warning for warning in result["warnings"]))
+        self.assertFalse(any("config.txt" in warning for warning in result["warnings"]))
 
 
 if __name__ == "__main__":
