@@ -35,7 +35,8 @@ function createApp(requestAnimationFrame = callback => callback()) {
     return elements.get(selector);
   }
   const graph = {
-    on() {},
+    listeners: {},
+    on(event, selector, handler) { this.listeners[`${event}:${selector}`] = handler; },
     destroy() {},
     edges() { return { data() {} }; },
     collection() { return { ids: [], merge(nodes) { this.ids.push(...nodes); } }; },
@@ -452,6 +453,33 @@ test("default loop labels are offset outward without changing ordinary edge labe
   assert.ok(x * Math.sin(angle) - y * Math.cos(angle) > 10);
   assert.equal(cy.getElementById("edge").pstyle("text-margin-y").pfValue, -14);
   cy.destroy();
+});
+
+test("initial states are visually distinct and identified in details across model switches", async () => {
+  const app = createApp();
+  app.responseGraphs[0].nodes[0].data.initial = true;
+  app.responseGraphs[1].nodes[0].data.initial = true;
+  app.editor.type("Agent A:\ninit q0");
+  await app.element("#generate").emit("click");
+  for (const id of ["global", "local"]) {
+    app.element("#graph-select").value = id;
+    await app.element("#graph-select").emit("change");
+    const cy = require("cytoscape")({
+      headless: true, styleEnabled: true, style: app.graph.styles,
+      elements: app.responseGraphs.find(graph => graph.id === id).nodes.map(node => ({
+        data: { ...node.data, label: node.data.id }
+      })),
+    });
+    const initial = cy.getElementById("a");
+    const ordinary = cy.getElementById("b");
+    assert.equal(initial.pstyle("shape").value, "round-rectangle");
+    assert.notEqual(initial.pstyle("border-color").strValue, ordinary.pstyle("border-color").strValue);
+    app.graph.listeners["tap:node"]({ target: { id: () => "a", data: key => key === "initial" ? true : "{initial}" } });
+    assert.match(app.element("#details").textContent, /^Initial state a/);
+    app.graph.listeners["tap:node"]({ target: { id: () => "b", data: key => key === "initial" ? false : "{other}" } });
+    assert.match(app.element("#details").textContent, /^State b/);
+    cy.destroy();
+  }
 });
 
 test("loop label offsets remain outside across all directions", () => {

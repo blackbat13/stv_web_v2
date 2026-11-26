@@ -9,6 +9,7 @@ global model when verification succeeds; blue transitions are shared actions.
 Choose between force-directed, layered, circle and grid layouts. The selected
 layout is used when switching models and can be reapplied with the rearrange
 button. Drag states, zoom, fit the graph, and click an element for details.
+The initial state is marked with a green rounded rectangle in global and local models.
 Model statistics show the states and transitions in the selected graph and
 the number of agents in the system. Parallel transitions are counted separately.
 The interface shows wall-clock times for the last successful generation and

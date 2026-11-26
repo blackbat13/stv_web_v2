@@ -55,6 +55,10 @@ def parse_graph(path, name, kind):
                 "id": node_id,
                 "label": node_id,
                 "details": dot_text(node.get_label()) or node_id,
+                # STV numbers each initial local state 0 and hashes global states as local IDs separated by semicolons.
+                "initial": (kind == "local" and node_id == "0") or (
+                    kind == "global" and re.fullmatch(r"(?:0;)+", node_id) is not None
+                ),
             }
         })
     edges = []

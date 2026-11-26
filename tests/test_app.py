@@ -1,11 +1,12 @@
 import io
 import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import CHECKER, MAX_FORMULA_SIZE, MAX_INPUT_SIZE, MAX_OUTPUT_SIZE, ROOT, ModelError, app, extract_formula, run_checker
+from app import CHECKER, MAX_FORMULA_SIZE, MAX_INPUT_SIZE, MAX_OUTPUT_SIZE, ROOT, ModelError, app, extract_formula, parse_graph, run_checker
 
 
 SAMPLE = Path(__file__).resolve().parents[1] / "model_checkers" / "stv_v2" / "sample_input" / "Voters1Candidates2.txt"
@@ -46,6 +47,21 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(extract_formula("Agent A:\ninit q0\nFORMULA: <<A>><>\n(x == 1)\n"), "<<A>><>\n(x == 1)")
         self.assertEqual(extract_formula("FORMULA: <<A>><>\n(x == 1)\n\nAgent A:\ninit q0\n"), "<<A>><>\n(x == 1)")
         self.assertEqual(extract_formula("Agent A:\ninit q0\n"), "")
+
+    def test_initial_state_uses_stv_ids_not_node_order_or_incoming_edges(self):
+        examples = (
+            ("local", 'digraph G { 1; 0; 1 -> 0; }', "0"),
+            ("global", 'digraph G { "0;1;"; "0;0;"; "0;1;" -> "0;0;"; }', "0;0;"),
+            ("global", 'digraph G { "1;"; "0;"; "1;" -> "0;"; }', "0;"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "model.dot"
+            for kind, dot, initial in examples:
+                with self.subTest(kind=kind, initial=initial):
+                    path.write_text(dot, encoding="utf-8")
+                    graph = parse_graph(path, "model", kind)
+                    self.assertEqual([node["data"]["id"] for node in graph["nodes"] if node["data"]["initial"]], [initial])
+                    self.assertEqual(len(graph["edges"]), 1)
 
     def test_timeout_is_reported(self):
         with patch("app.subprocess.run", side_effect=subprocess.TimeoutExpired("stv", 120)):
@@ -140,9 +156,13 @@ class CheckerIntegrationTests(unittest.TestCase):
         self.assertIsNone(generated["result"])
         self.assertEqual([graph["name"] for graph in generated["graphs"]], ["Global model", "Coercer1", "Voter1"])
         self.assertEqual(len(generated["graphs"][0]["nodes"]), 15)
+        for graph in generated["graphs"]:
+            initial = [node["data"]["id"] for node in graph["nodes"] if node["data"]["initial"]]
+            self.assertEqual(initial, ["0;0;" if graph["kind"] == "global" else "0"])
         self.assertTrue(all(edge["data"]["kind"] != "strategy" for edge in generated["graphs"][0]["edges"]))
         verified = run_checker(self.sample, True)
         self.assertIs(verified["result"], True)
+        self.assertEqual([node["data"]["id"] for node in verified["graphs"][0]["nodes"] if node["data"]["initial"]], ["0;0;"])
         self.assertTrue(any(edge["data"]["kind"] == "strategy" for edge in verified["graphs"][0]["edges"]))
         voter = verified["graphs"][2]
         self.assertEqual(sum(edge["data"]["source"] == "1" and edge["data"]["target"] == "3" for edge in voter["edges"]), 2)
@@ -157,6 +177,20 @@ class CheckerIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertIn("parse error", response.json["error"].lower())
         self.assertNotIn("could not open the config file", response.json["error"])
+
+    def test_initial_state_with_changed_location_and_incoming_transition(self):
+        sample = self.sample.replace(b"INITIAL: []", b"INITIAL: [Voter1_vote:=1]", 1)
+        sample = sample.replace(b"init q0", b"init q1", 1).replace(b"idle: q3->q3", b"idle: q3->q1", 1)
+        graphs = run_checker(sample, False)["graphs"]
+        voter = next(graph for graph in graphs if graph["name"] == "Voter1")
+        initial = next(node["data"] for node in voter["nodes"] if node["data"]["initial"])
+        self.assertEqual(initial["id"], "0")
+        self.assertIn("q1", initial["details"])
+        self.assertIn("Voter1_vote=1", initial["details"])
+        self.assertTrue(any(edge["data"]["target"] == "0" for edge in voter["edges"]))
+        global_initial = next(node["data"] for node in graphs[0]["nodes"] if node["data"]["initial"])
+        self.assertEqual(global_initial["id"], "0;0;")
+        self.assertIn("q1,q0", global_initial["details"])
 
     def test_override_formula_without_changing_specification(self):
         original = self.sample

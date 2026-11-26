@@ -295,6 +295,10 @@ async function displayGraph(animate = false) {
         "text-valign": "center", "text-halign": "center", "width": 48, "height": 48,
         "text-max-width": 65, "text-wrap": "ellipsis"
       }},
+      { selector: "node[?initial]", style: {
+        "shape": "round-rectangle", "background-color": "#dcf4e8",
+        "border-color": "#168459", "border-width": 3
+      }},
       { selector: "edge", style: {
         "curve-style": "bezier", "width": 1.5, "line-color": "#a7b3c4",
         "target-arrow-color": "#a7b3c4", "target-arrow-shape": "triangle",
@@ -312,7 +316,7 @@ async function displayGraph(animate = false) {
   });
   cy.on("tap", "node", event => {
     const node = event.target;
-    details.textContent = `State ${node.id()}\n${node.data("details").replace(/[{}]/g, "").replace(/\|/g, " · ")}`;
+    details.textContent = `${node.data("initial") ? "Initial state" : "State"} ${node.id()}\n${node.data("details").replace(/[{}]/g, "").replace(/\|/g, " · ")}`;
   });
   cy.on("tap", "edge", event => {
     const edge = event.target;
