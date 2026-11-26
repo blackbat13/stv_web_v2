@@ -1,7 +1,7 @@
 # STV model workbench
 
 A Flask interface for generating and exploring global and agent-local models with
-STV v2. Load a specification from a file or write or paste it in the
+STV v2. Load a UTF-8 specification from a `.txt` or `.stv` file, or write or paste it in the
 specification editor, then view or edit the formula before verifying it.
 Generate models to explore them, or select on-the-fly verification to verify
 without generating a global model first. The checker marks strategy transitions in red in the

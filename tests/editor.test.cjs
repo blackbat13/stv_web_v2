@@ -93,13 +93,24 @@ function createApp(requestAnimationFrame = callback => callback()) {
   return { element, requests, editor, layouts, graph, responseGraphs, responseData, context };
 }
 
-test("loaded file edits are used for generation and verification", async () => {
+test("file picker accepts both txt and stv specifications", () => {
+  const template = fs.readFileSync(path.join(root, "templates", "index.html"), "utf8");
+  const input = template.match(/<input\b[^>]*\bid="model-file"[^>]*>/);
+  assert.ok(input);
+  const accept = input[0].match(/\baccept="([^"]*)"/);
+  assert.ok(accept);
+  const types = accept[1].split(",");
+  assert.ok(types.includes(".txt"));
+  assert.ok(types.includes(".stv"));
+});
+
+for (const extension of ["txt", "stv"]) test(`loaded ${extension} file edits are used for generation and verification`, async () => {
   const app = createApp();
   const samplePath = path.join(root, "model_checkers", "stv_v2", "sample_input", "Voters1Candidates2.txt");
   const original = fs.readFileSync(samplePath, "utf8");
   const bytes = Buffer.from(original);
   app.element("#model-file").files = [{
-    name: "sample.txt", size: bytes.length,
+    name: `sample.${extension}`, size: bytes.length,
     async arrayBuffer() { return bytes; },
   }];
   await app.element("#model-file").emit("change");
